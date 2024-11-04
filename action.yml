@@ -34,6 +34,10 @@ inputs:
     description: 'Number of seconds to sleep before retrying'
     required: false
     default: 1
+  flat_naming:
+    description: 'Use flat naming convention (true/false). If true, expects files like locales/en.json instead of locales/en/file.json'
+    required: false
+    default: 'false'
 permissions:
   contents: write
 branding:
@@ -49,10 +53,18 @@ runs:
       run: |
         > paths.txt
         translations_path="${{ inputs.translations_path }}"
+        flat_naming="${{ inputs.flat_naming }}"
+        base_lang="${{ inputs.base_lang }}"
+        file_format="${{ inputs.file_format }}"
+
         while IFS= read -r path; do
           path=$(echo "$path" | xargs)
           if [ -n "$path" ]; then
-            echo "./${path}/${{ inputs.base_lang }}/**/*.${{ inputs.file_format }}" >> paths.txt
+            if [[ "$flat_naming" == "true" ]]; then
+              echo "./${path}/${base_lang}.${file_format}" >> paths.txt
+            else
+              echo "./${path}/${base_lang}/**/*.${file_format}" >> paths.txt
+            fi
           fi
         done <<< "$translations_path"
 
@@ -86,33 +98,47 @@ runs:
         translations_path="${{ inputs.translations_path }}"
         base_lang="${{ inputs.base_lang }}"
         file_format="${{ inputs.file_format }}"
+        flat_naming="${{ inputs.flat_naming }}"
 
         paths=()
         while IFS= read -r path; do
           path=$(echo "$path" | xargs)
           if [ -n "$path" ]; then
-            if [ -d "${path}/${base_lang}" ]; then
-              paths+=("${path}/${base_lang}")
+            if [[ "$flat_naming" == "true" ]]; then
+              if [ -f "${path}/${base_lang}.${file_format}" ]; then
+                paths+=("${path}/${base_lang}.${file_format}")
+              else
+                echo "File ${path}/${base_lang}.${file_format} does not exist."
+              fi
             else
-              echo "Directory ${path}/${base_lang} does not exist."
+              # Add folder path if flat_naming is false
+              if [ -d "${path}/${base_lang}" ]; then
+                paths+=("${path}/${base_lang}")
+              else
+                echo "Directory ${path}/${base_lang} does not exist."
+              fi
             fi
           fi
         done <<< "$translations_path"
-    
+
         if [ ${#paths[@]} -eq 0 ]; then
           echo "No translation paths provided."
           echo "has_files=false" >> $GITHUB_OUTPUT
           exit 0
         fi
-    
-        mapfile -d '' -t ALL_FILES_ARRAY < <(find "${paths[@]}" -name "*.${file_format}" -type f -print0)
+
+        if [[ "$flat_naming" == "true" ]]; then
+          printf "%s\n" "${paths[@]}" | mapfile -t ALL_FILES_ARRAY
+        else
+          mapfile -d '' -t ALL_FILES_ARRAY < <(find "${paths[@]}" -name "*.${file_format}" -type f -print0)
+        fi
 
         if [ ${#ALL_FILES_ARRAY[@]} -eq 0 ]; then
           echo "No translation files found."
           echo "has_files=false" >> $GITHUB_OUTPUT
         else
           ALL_FILES=$(printf "%s," "${ALL_FILES_ARRAY[@]}")
-          ALL_FILES="${ALL_FILES%|}"
+          ALL_FILES="${ALL_FILES%,}"  # Trim trailing comma
           
           echo "ALL_FILES=$ALL_FILES" >> $GITHUB_OUTPUT
           echo "has_files=true" >> $GITHUB_OUTPUT
