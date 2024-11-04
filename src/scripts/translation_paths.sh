@@ -48,10 +48,8 @@ find_all_translation_files() {
     fi
 
     if [[ "$FLAT_NAMING" == "true" ]]; then
-        echo "DEBUG: Flat naming is true, setting ALL_FILES_ARRAY directly from paths"
-        mapfile -t ALL_FILES_ARRAY <<< "${paths[@]}"
+        mapfile -d '' -t ALL_FILES_ARRAY < <(printf "%s\0" "${paths[@]}")
     else
-        echo "DEBUG: Flat naming is false, finding files in directories"
         mapfile -t ALL_FILES_ARRAY < <(find "${paths[@]}" -name "*.${FILE_FORMAT}" -type f)
     fi
 
