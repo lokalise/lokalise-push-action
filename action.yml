@@ -100,26 +100,41 @@ runs:
         file_format="${{ inputs.file_format }}"
         flat_naming="${{ inputs.flat_naming }}"
 
+        echo "DEBUG: translations_path = $translations_path"
+        echo "DEBUG: base_lang = $base_lang"
+        echo "DEBUG: file_format = $file_format"
+        echo "DEBUG: flat_naming = $flat_naming"
+
         paths=()
         while IFS= read -r path; do
           path=$(echo "$path" | xargs)
+          echo "DEBUG: Checking path = $path"
           if [ -n "$path" ]; then
             if [[ "$flat_naming" == "true" ]]; then
-              if [ -f "${path}/${base_lang}.${file_format}" ]; then
-                paths+=("${path}/${base_lang}.${file_format}")
+              # Flat structure: look for specific file
+              target_file="${path}/${base_lang}.${file_format}"
+              echo "DEBUG: Looking for file = $target_file"
+              if [ -f "$target_file" ]; then
+                paths+=("$target_file")
+                echo "DEBUG: Found flat-named file $target_file"
               else
-                echo "File ${path}/${base_lang}.${file_format} does not exist."
+                echo "File $target_file does not exist."
               fi
             else
-              # Add folder path if flat_naming is false
-              if [ -d "${path}/${base_lang}" ]; then
-                paths+=("${path}/${base_lang}")
+              # Folder structure: check if base_lang directory exists
+              target_dir="${path}/${base_lang}"
+              echo "DEBUG: Looking for directory = $target_dir"
+              if [ -d "$target_dir" ]; then
+                paths+=("$target_dir")
+                echo "DEBUG: Found directory $target_dir"
               else
-                echo "Directory ${path}/${base_lang} does not exist."
+                echo "Directory $target_dir does not exist."
               fi
             fi
           fi
         done <<< "$translations_path"
+
+        echo "DEBUG: paths array = ${paths[@]}"
 
         if [ ${#paths[@]} -eq 0 ]; then
           echo "No translation paths provided."
@@ -128,10 +143,15 @@ runs:
         fi
 
         if [[ "$flat_naming" == "true" ]]; then
+          echo "DEBUG: Flat naming is true, setting ALL_FILES_ARRAY directly from paths"
           printf "%s\n" "${paths[@]}" | mapfile -t ALL_FILES_ARRAY
         else
+          echo "DEBUG: Flat naming is false, finding files in directories"
           mapfile -d '' -t ALL_FILES_ARRAY < <(find "${paths[@]}" -name "*.${file_format}" -type f -print0)
         fi
+
+        echo "DEBUG: ALL_FILES_ARRAY count = ${#ALL_FILES_ARRAY[@]}"
+        echo "DEBUG: ALL_FILES_ARRAY contents = ${ALL_FILES_ARRAY[@]}"
 
         if [ ${#ALL_FILES_ARRAY[@]} -eq 0 ]; then
           echo "No translation files found."
@@ -186,17 +206,17 @@ runs:
           exit 1
         fi
 
-    - name: Mark Lokalise upload as complete
-      if: steps.check-first-run.outputs.first_run == 'true'
-      shell: bash
-      run: |
-        set -e
+    # - name: Mark Lokalise upload as complete
+    #   if: steps.check-first-run.outputs.first_run == 'true'
+    #   shell: bash
+    #   run: |
+    #     set -e
 
-        git config --global user.name "${GITHUB_ACTOR}"
-        git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
-        if ! git rev-parse "refs/tags/lokalise-upload-complete" >/dev/null 2>&1; then
-          git tag -a "lokalise-upload-complete" -m "First Lokalise upload complete"
-          git push origin "lokalise-upload-complete"
-        else
-          echo "Tag 'lokalise-upload-complete' already exists."
-        fi
+    #     git config --global user.name "${GITHUB_ACTOR}"
+    #     git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+    #     if ! git rev-parse "refs/tags/lokalise-upload-complete" >/dev/null 2>&1; then
+    #       git tag -a "lokalise-upload-complete" -m "First Lokalise upload complete"
+    #       git push origin "lokalise-upload-complete"
+    #     else
+    #       echo "Tag 'lokalise-upload-complete' already exists."
+    #     fi
