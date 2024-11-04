@@ -37,7 +37,7 @@ inputs:
   flat_naming:
     description: 'Use flat naming convention (true/false). If true, expects files like locales/en.json instead of locales/en/file.json'
     required: false
-    default: 'false'
+    default: false
 permissions:
   contents: write
 branding:
