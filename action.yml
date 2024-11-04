@@ -144,7 +144,7 @@ runs:
 
         if [[ "$flat_naming" == "true" ]]; then
           echo "DEBUG: Flat naming is true, setting ALL_FILES_ARRAY directly from paths"
-          printf "%s\0" "${paths[@]}" | mapfile -d '' -t ALL_FILES_ARRAY
+          mapfile -d '' -t ALL_FILES_ARRAY < <(printf "%s\0" "${paths[@]}")
         else
           echo "DEBUG: Flat naming is false, finding files in directories"
           mapfile -d '' -t ALL_FILES_ARRAY < <(find "${paths[@]}" -name "*.${file_format}" -type f -print0)
