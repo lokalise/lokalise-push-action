@@ -1,0 +1,35 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - go
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+
+      - name: Install UPX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y upx
+
+      - name: Build and Compress Binary
+        run: |
+          cd src/store_translation_paths
+          mkdir -p ../../bin
+          
+          go build -ldflags="-s -w" -o ../../bin/store_translation_paths
+          
+          upx --best --lzma ../../bin/store_translation_paths
+
+      - name: List Output Files
+        run: |
+          ls -lh bin/
