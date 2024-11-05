@@ -57,108 +57,115 @@ runs:
         FILE_FORMAT: "${{ inputs.file_format }}"
       run: |
         set -e
-        chmod +x "${{ github.action_path }}/src/scripts/translation_paths.sh"
+
+        CMD_PATH="${{ github.action_path }}/bin/store_translation_paths"
+        chmod +x "$CMD_PATH"
+        output=$("$CMD_PATH")
+          
+        # echo "output_variable_name=$output" >> $GITHUB_OUTPUT
+
+        # chmod +x "${{ github.action_path }}/src/scripts/translation_paths.sh"
         
-        . "${{ github.action_path }}/src/scripts/translation_paths.sh"
+        # . "${{ github.action_path }}/src/scripts/translation_paths.sh"
         
-        store_translation_paths
+        # store_translation_paths
 
-    - name: Get changed files
-      id: changed-files
-      uses: tj-actions/changed-files@v45
-      with:
-        files_from_source_file: paths.txt
-        separator: ','
+    # - name: Get changed files
+    #   id: changed-files
+    #   uses: tj-actions/changed-files@v45
+    #   with:
+    #     files_from_source_file: paths.txt
+    #     separator: ','
 
-    - name: Check if this is the first run on the branch
-      if: steps.changed-files.outputs.any_changed == 'false'
-      id: check-first-run
-      shell: bash
-      run: |
-        set -e
+    # - name: Check if this is the first run on the branch
+    #   if: steps.changed-files.outputs.any_changed == 'false'
+    #   id: check-first-run
+    #   shell: bash
+    #   run: |
+    #     set -e
 
-        if git rev-parse "refs/tags/lokalise-upload-complete" >/dev/null 2>&1; then
-          echo "first_run=false" >> $GITHUB_OUTPUT
-        else
-          echo "first_run=true" >> $GITHUB_OUTPUT
-        fi
+    #     if git rev-parse "refs/tags/lokalise-upload-complete" >/dev/null 2>&1; then
+    #       echo "first_run=false" >> $GITHUB_OUTPUT
+    #     else
+    #       echo "first_run=true" >> $GITHUB_OUTPUT
+    #     fi
 
-    - name: Find all translation files
-      if: steps.changed-files.outputs.any_changed == 'false' && steps.check-first-run.outputs.first_run == 'true'
-      id: find-files
-      shell: bash
-      env:
-        TRANSLATIONS_PATH: "${{ inputs.translations_path }}"
-        BASE_LANG: "${{ inputs.base_lang }}"
-        FILE_FORMAT: "${{ inputs.file_format }}"
-        FLAT_NAMING: "${{ inputs.flat_naming }}"
-      run: |
-        set -e
-        chmod +x "${{ github.action_path }}/src/scripts/translation_paths.sh"
+    # - name: Find all translation files
+    #   if: steps.changed-files.outputs.any_changed == 'false' && steps.check-first-run.outputs.first_run == 'true'
+    #   id: find-files
+    #   shell: bash
+    #   env:
+    #     TRANSLATIONS_PATH: "${{ inputs.translations_path }}"
+    #     BASE_LANG: "${{ inputs.base_lang }}"
+    #     FILE_FORMAT: "${{ inputs.file_format }}"
+    #     FLAT_NAMING: "${{ inputs.flat_naming }}"
+    #   run: |
+    #     set -e
+    #     chmod +x "${{ github.action_path }}/src/scripts/translation_paths.sh"
 
-        . "${{ github.action_path }}/src/scripts/translation_paths.sh"
+    #     . "${{ github.action_path }}/src/scripts/translation_paths.sh"
 
-        if find_all_translation_files; then
-          echo "Translation files found and set."
-          echo "has_files=true" >> $GITHUB_OUTPUT
-        else
-          echo "No translation files found."
-          echo "has_files=false" >> $GITHUB_OUTPUT
-        fi
+    #     if find_all_translation_files; then
+    #       echo "Translation files found and set."
+    #       echo "has_files=true" >> $GITHUB_OUTPUT
+    #     else
+    #       echo "No translation files found."
+    #       echo "has_files=false" >> $GITHUB_OUTPUT
+    #     fi
 
-    - name: Install Lokalise CLI
-      if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
-      shell: bash
-      run: |
-        set -e
-        chmod +x "${{ github.action_path }}/src/scripts/install_lokalise_cli.sh"
-        "${{ github.action_path }}/src/scripts/install_lokalise_cli.sh"
+    # - name: Install Lokalise CLI
+    #   if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
+    #   shell: bash
+    #   run: |
+    #     set -e
+    #     chmod +x "${{ github.action_path }}/src/scripts/install_lokalise_cli.sh"
+    #     "${{ github.action_path }}/src/scripts/install_lokalise_cli.sh"
 
-    - name: Push translation files to Lokalise
-      if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
-      shell: bash
-      env:
-        CLI_ADD_PARAMS: ${{ inputs.additional_params }}
-        MAX_RETRIES: ${{ inputs.max_retries }}
-        SLEEP_TIME: ${{ inputs.sleep_on_retry }}
-        BASE_LANG: ${{ inputs.base_lang }}
-      run: |
-        set -e
+    # - name: Push translation files to Lokalise
+    #   if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
+    #   shell: bash
+    #   env:
+    #     CLI_ADD_PARAMS: ${{ inputs.additional_params }}
+    #     MAX_RETRIES: ${{ inputs.max_retries }}
+    #     SLEEP_TIME: ${{ inputs.sleep_on_retry }}
+    #     BASE_LANG: ${{ inputs.base_lang }}
+    #   run: |
+    #     set -e
 
-        if [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ]; then
-          ALL_FILES="${{ steps.find-files.outputs.ALL_FILES }}"
-        else
-          ALL_CHANGED_FILES="${{ steps.changed-files.outputs.all_changed_files }}"
-        fi
+    #     if [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ]; then
+    #       ALL_FILES="${{ steps.find-files.outputs.ALL_FILES }}"
+    #     else
+    #       ALL_CHANGED_FILES="${{ steps.changed-files.outputs.all_changed_files }}"
+    #     fi
 
-        if [ -z "${ALL_FILES}" ] && [ -z "${ALL_CHANGED_FILES}" ]; then
-          echo "No files to upload."
-          exit 0
-        fi
+    #     if [ -z "${ALL_FILES}" ] && [ -z "${ALL_CHANGED_FILES}" ]; then
+    #       echo "No files to upload."
+    #       exit 0
+    #     fi
         
-        chmod +x "${{ github.action_path }}/src/scripts/lokalise_upload.sh"
+    #     chmod +x "${{ github.action_path }}/src/scripts/lokalise_upload.sh"
 
-        set +e
-        echo "${ALL_FILES:-$ALL_CHANGED_FILES}" | tr ',' '\n' | xargs -P 6 -I {} bash "${{ github.action_path }}/src/scripts/lokalise_upload.sh" "{}" "${{ inputs.project_id }}" "${{ inputs.api_token }}"
-        xargs_exit_code=$?
-        set -e
+    #     set +e
+    #     echo "${ALL_FILES:-$ALL_CHANGED_FILES}" | tr ',' '\n' | xargs -P 6 -I {} bash "${{ github.action_path }}/src/scripts/lokalise_upload.sh" "{}" "${{ inputs.project_id }}" "${{ inputs.api_token }}"
+    #     xargs_exit_code=$?
+    #     set -e
 
-        if [ $xargs_exit_code -ne 0 ]; then
-          echo "File upload failed"
-          exit 1
-        fi
+    #     if [ $xargs_exit_code -ne 0 ]; then
+    #       echo "File upload failed"
+    #       exit 1
+    #     fi
 
-    - name: Mark Lokalise upload as complete
-      if: steps.check-first-run.outputs.first_run == 'true'
-      shell: bash
-      run: |
-        set -e
+    # - name: Mark Lokalise upload as complete
+    #   if: steps.check-first-run.outputs.first_run == 'true'
+    #   shell: bash
+    #   run: |
+    #     set -e
 
-        git config --global user.name "${GITHUB_ACTOR}"
-        git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
-        if ! git rev-parse "refs/tags/lokalise-upload-complete" >/dev/null 2>&1; then
-          git tag -a "lokalise-upload-complete" -m "First Lokalise upload complete"
-          git push origin "lokalise-upload-complete"
-        else
-          echo "Tag 'lokalise-upload-complete' already exists."
-        fi
+    #     git config --global user.name "${GITHUB_ACTOR}"
+    #     git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+    #     if ! git rev-parse "refs/tags/lokalise-upload-complete" >/dev/null 2>&1; then
+    #       git tag -a "lokalise-upload-complete" -m "First Lokalise upload complete"
+    #       git push origin "lokalise-upload-complete"
+    #     else
+    #       echo "Tag 'lokalise-upload-complete' already exists."
+    #     fi
