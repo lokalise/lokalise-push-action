@@ -6,24 +6,21 @@ import (
 )
 
 func main() {
-	k1 := os.Getenv("K1")
-	k2 := os.Getenv("K2")
-	k3 := os.Getenv("K3")
+	name := "output_variable_name"
+	value := "output_value"
 
-	// Log other information to stderr
-	if k1 == "" || k2 == "" {
-		fmt.Fprintln(os.Stderr, "Missing required environment variables.")
+	githubOutput := os.Getenv("GITHUB_OUTPUT")
+
+	file, err := os.OpenFile(githubOutput, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error opening GITHUB_OUTPUT file: %v\n", err)
 		os.Exit(1)
 	}
+	defer file.Close()
 
-	fmt.Fprintf(os.Stderr, "API Token: %s\n", k1)
-	fmt.Fprintf(os.Stderr, "Project ID: %s\n", k2)
-	fmt.Fprintf(os.Stderr, "Base Language: %s\n", k3)
-
-	// Only output the result to stdout
-	output := "some output value"
-	fmt.Println(output) // Expected to be captured as $output in GitHub Action
-
-	// Additional confirmation output
-	fmt.Fprintln(os.Stderr, "Output sent to stdout:", output)
+	_, err = file.WriteString(fmt.Sprintf("%s=%s\n", name, value))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing to GITHUB_OUTPUT file: %v\n", err)
+		os.Exit(1)
+	}
 }
