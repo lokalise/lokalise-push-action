@@ -15,6 +15,8 @@ jobs:
 
       - name: Set up Go
         uses: actions/setup-go@v4
+        with:
+          go-version: '1.23'
 
       - name: Install UPX
         run: |
@@ -24,11 +26,19 @@ jobs:
       - name: Build and Compress Binary
         run: |
           cd src/store_translation_paths
+          mkdir -p ../../bin
           
           go build -ldflags="-s -w" -o ../../bin/store_translation_paths
-          
           upx --best --lzma ../../bin/store_translation_paths
 
-      - name: List Output Files
+      - name: Commit Binary
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ls -lh bin/
+          cd ../../
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add bin/store_translation_paths
+          git commit -m "Build and commit store_translation_paths binary [skip ci]"
+          git push
