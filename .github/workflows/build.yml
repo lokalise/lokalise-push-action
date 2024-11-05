@@ -24,7 +24,6 @@ jobs:
       - name: Build and Compress Binary
         run: |
           cd src/store_translation_paths
-          mkdir -p ../../bin
           
           go build -ldflags="-s -w" -o ../../bin/store_translation_paths
           
