@@ -65,12 +65,6 @@ runs:
           exit 1
         }
 
-        # chmod +x "${{ github.action_path }}/src/scripts/translation_paths.sh"
-        
-        # . "${{ github.action_path }}/src/scripts/translation_paths.sh"
-        
-        # store_translation_paths
-
     - name: Verify GITHUB_OUTPUT
       shell: bash
       run: |

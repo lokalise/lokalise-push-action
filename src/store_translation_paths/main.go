@@ -2,14 +2,16 @@ package main
 
 import (
 	"githuboutput"
-	"log"
+	"os"
 )
 
 func main() {
 	name := "output_variable_name"
 	value := "output_value"
 
-	if err := githuboutput.WriteToGitHubOutput(name, value); err != nil {
-		log.Fatalf("Failed to write to GitHub output: %v", err)
+	if !githuboutput.WriteToGitHubOutput(name, value) {
+		os.Exit(1)
 	}
+
+	os.Exit(0)
 }

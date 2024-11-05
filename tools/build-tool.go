@@ -54,11 +54,11 @@ func getProjectRoot() string {
 // buildBinary compiles the Go binary
 func buildBinary(outputPath string) error {
 	fmt.Println("Building binary for Linux (Ubuntu)...")
-	cmd := exec.Command("go", "build", "-ldflags=-s -w", "-o", outputPath)
+	cmd := exec.Command("go", "build", "-tags=tiny", "-ldflags=-s -w", "-o", outputPath)
 	cmd.Dir = srcDir
 
 	// Set environment variables for cross-compilation to Linux
-	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64")
+	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0")
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
