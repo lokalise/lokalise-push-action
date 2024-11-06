@@ -130,11 +130,13 @@ runs:
       run: |
         set -e
 
-        if [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ]; then
-          FILES="${{ steps.find-files.outputs.ALL_FILES }}"
-        else
-          FILES="${{ steps.changed-files.outputs.all_changed_files }}"
-        fi
+        # if [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ]; then
+        #   FILES="${{ steps.find-files.outputs.ALL_FILES }}"
+        # else
+        #   FILES="${{ steps.changed-files.outputs.all_changed_files }}"
+        # fi
+
+        FILES="${{ steps.find-files.outputs.ALL_FILES }}"
 
         if [ -z "$FILES" ]; then
           echo "No files to upload."
