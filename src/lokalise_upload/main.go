@@ -23,25 +23,23 @@ func returnWithError(message string) {
 }
 
 func uploadFile(file, projectID, token string) {
-	langISO := getEnv("BASE_LANG", true)
+	langISO := os.Getenv("BASE_LANG")
 	additionalParams := os.Getenv("CLI_ADD_PARAMS")
 	githubRefName := os.Getenv("GITHUB_REF_NAME")
 	maxRetries := getEnvAsInt("MAX_RETRIES", defaultMaxRetries)
 	sleepTime := getEnvAsInt("SLEEP_TIME", defaultSleepTime)
 
-	// Ensure essential arguments and file existence
 	validateFile(file)
-	if projectID == "" || token == "" {
-		returnWithError("Project ID and token are required and cannot be empty.")
+	if projectID == "" || token == "" || langISO == "" {
+		returnWithError("Project ID, API token, and base language are required and cannot be empty.")
+	}
+	if githubRefName == "" {
+		returnWithError("GITHUB_REF_NAME is required and cannot be empty.")
 	}
 
-	fmt.Printf("Starting upload for %s\n", file)
 	startTime := time.Now()
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		fmt.Printf("Attempt %d of %d\n", attempt, maxRetries)
-
-		// Build command arguments
 		args := []string{
 			fmt.Sprintf("--token=%s", token),
 			fmt.Sprintf("--project-id=%s", projectID),
@@ -64,22 +62,18 @@ func uploadFile(file, projectID, token string) {
 
 		err := cmd.Run()
 		if err == nil {
-			fmt.Printf("Successfully uploaded %s\n", file)
 			return
 		}
 
-		// Handle API rate limit error
 		if isRateLimitError(err) {
-			fmt.Printf("Rate limit reached on attempt %d for %s. Retrying in %d seconds...\n", attempt, file, sleepTime)
 			time.Sleep(time.Duration(sleepTime) * time.Second)
 			if time.Since(startTime).Seconds() > maxTotalTime {
 				returnWithError(fmt.Sprintf("Max retry time exceeded (%d seconds) for %s. Exiting.", maxTotalTime, file))
 			}
-			sleepTime = min(sleepTime*2, maxSleepTime) // Exponential backoff with max limit
+			sleepTime = min(sleepTime*2, maxSleepTime)
 			continue
 		}
 
-		// For other errors, exit immediately
 		returnWithError(fmt.Sprintf("Permanent error during upload for %s: %v", file, err))
 	}
 
@@ -99,14 +93,6 @@ func main() {
 }
 
 // Helper functions
-
-func getEnv(key string, required bool) string {
-	val := os.Getenv(key)
-	if required && val == "" {
-		returnWithError(fmt.Sprintf("Environment variable %s is required.", key))
-	}
-	return val
-}
 
 func getEnvAsInt(key string, defaultVal int) int {
 	valStr := os.Getenv(key)
