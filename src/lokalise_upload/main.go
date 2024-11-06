@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
@@ -58,10 +59,9 @@ func uploadFile(file, projectID, token string) {
 		}
 
 		cmd := exec.Command("./bin/lokalise2", args...)
-		cmd.Stdout = os.Stdout
+		cmd.Stdout = io.Discard
 		cmd.Stderr = os.Stderr
 
-		// Run the command and handle output
 		err := cmd.Run()
 		if err == nil {
 			fmt.Printf("Successfully uploaded %s\n", file)
