@@ -47,36 +47,30 @@ branding:
 runs:
   using: "composite"
   steps:
-    - name: Set translation paths
-      id: translation-paths
-      shell: bash
-      env:
-        TRANSLATIONS_PATH: "${{ inputs.translations_path }}"
-        FLAT_NAMING: "${{ inputs.flat_naming }}"
-        BASE_LANG: "${{ inputs.base_lang }}"
-        FILE_FORMAT: "${{ inputs.file_format }}"
-      run: |
-        set -e
+    # - name: Set translation paths
+    #   id: translation-paths
+    #   shell: bash
+    #   env:
+    #     TRANSLATIONS_PATH: "${{ inputs.translations_path }}"
+    #     FLAT_NAMING: "${{ inputs.flat_naming }}"
+    #     BASE_LANG: "${{ inputs.base_lang }}"
+    #     FILE_FORMAT: "${{ inputs.file_format }}"
+    #   run: |
+    #     set -e
 
-        CMD_PATH="${{ github.action_path }}/bin/store_translation_paths"
-        chmod +x "$CMD_PATH"
-        output=$("$CMD_PATH") || {
-          echo "Error: store_translation_paths script failed with exit code $?"
-          exit 1
-        }
+    #     CMD_PATH="${{ github.action_path }}/bin/store_translation_paths"
+    #     chmod +x "$CMD_PATH"
+    #     $("$CMD_PATH") || {
+    #       echo "Error: store_translation_paths script failed with exit code $?"
+    #       exit 1
+    #     }
 
-    - name: Print paths.txt contents
-      shell: bash
-      run: |
-        echo "Contents of paths.txt:"
-        cat paths.txt
-
-    - name: Get changed files
-      id: changed-files
-      uses: tj-actions/changed-files@v45
-      with:
-        files_from_source_file: paths.txt
-        separator: ','
+    # - name: Get changed files
+    #   id: changed-files
+    #   uses: tj-actions/changed-files@v45
+    #   with:
+    #     files_from_source_file: paths.txt
+    #     separator: ','
 
     # - name: Check if this is the first run on the branch
     #   if: steps.changed-files.outputs.any_changed == 'false'
@@ -91,70 +85,71 @@ runs:
     #       echo "first_run=true" >> $GITHUB_OUTPUT
     #     fi
 
-    # - name: Find all translation files
-    #   if: steps.changed-files.outputs.any_changed == 'false' && steps.check-first-run.outputs.first_run == 'true'
-    #   id: find-files
-    #   shell: bash
-    #   env:
-    #     TRANSLATIONS_PATH: "${{ inputs.translations_path }}"
-    #     BASE_LANG: "${{ inputs.base_lang }}"
-    #     FILE_FORMAT: "${{ inputs.file_format }}"
-    #     FLAT_NAMING: "${{ inputs.flat_naming }}"
-    #   run: |
-    #     set -e
-    #     chmod +x "${{ github.action_path }}/src/scripts/translation_paths.sh"
-
-    #     . "${{ github.action_path }}/src/scripts/translation_paths.sh"
-
-    #     if find_all_translation_files; then
-    #       echo "Translation files found and set."
-    #       echo "has_files=true" >> $GITHUB_OUTPUT
-    #     else
-    #       echo "No translation files found."
-    #       echo "has_files=false" >> $GITHUB_OUTPUT
-    #     fi
-
-    - name: Install Lokalise CLI
-      if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
-      shell: bash
-      run: |
-        set -e
-        chmod +x "${{ github.action_path }}/src/scripts/install_lokalise_cli.sh"
-        "${{ github.action_path }}/src/scripts/install_lokalise_cli.sh"
-
-    - name: Push translation files to Lokalise
-      if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
+    - name: Find all translation files
+      # if: steps.changed-files.outputs.any_changed == 'false' && steps.check-first-run.outputs.first_run == 'true'
+      id: find-files
       shell: bash
       env:
-        CLI_ADD_PARAMS: ${{ inputs.additional_params }}
-        MAX_RETRIES: ${{ inputs.max_retries }}
-        SLEEP_TIME: ${{ inputs.sleep_on_retry }}
-        BASE_LANG: ${{ inputs.base_lang }}
+        TRANSLATIONS_PATH: "${{ inputs.translations_path }}"
+        BASE_LANG: "${{ inputs.base_lang }}"
+        FILE_FORMAT: "${{ inputs.file_format }}"
+        FLAT_NAMING: "${{ inputs.flat_naming }}"
       run: |
         set -e
 
-        if [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ]; then
-          ALL_FILES="${{ steps.find-files.outputs.ALL_FILES }}"
-        else
-          ALL_CHANGED_FILES="${{ steps.changed-files.outputs.all_changed_files }}"
-        fi
-
-        if [ -z "${ALL_FILES}" ] && [ -z "${ALL_CHANGED_FILES}" ]; then
-          echo "No files to upload."
-          exit 0
-        fi
-        
-        chmod +x "${{ github.action_path }}/src/scripts/lokalise_upload.sh"
-
-        set +e
-        echo "${ALL_FILES:-$ALL_CHANGED_FILES}" | tr ',' '\n' | xargs -P 6 -I {} bash "${{ github.action_path }}/src/scripts/lokalise_upload.sh" "{}" "${{ inputs.project_id }}" "${{ inputs.api_token }}"
-        xargs_exit_code=$?
-        set -e
-
-        if [ $xargs_exit_code -ne 0 ]; then
-          echo "File upload failed"
+        CMD_PATH="${{ github.action_path }}/bin/find_all_files"
+        chmod +x "$CMD_PATH"
+        $("$CMD_PATH") || {
+          echo "Error: find_all_files script failed with exit code $?"
           exit 1
-        fi
+        }
+
+    - name: Debug GitHub Output
+      shell: bash
+      run: |
+        echo "Contents of GITHUB_OUTPUT:"
+        cat "$GITHUB_OUTPUT"
+    # - name: Install Lokalise CLI
+    #   if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
+    #   shell: bash
+    #   run: |
+    #     set -e
+    #     chmod +x "${{ github.action_path }}/src/scripts/install_lokalise_cli.sh"
+    #     "${{ github.action_path }}/src/scripts/install_lokalise_cli.sh"
+
+    # - name: Push translation files to Lokalise
+    #   if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
+    #   shell: bash
+    #   env:
+    #     CLI_ADD_PARAMS: ${{ inputs.additional_params }}
+    #     MAX_RETRIES: ${{ inputs.max_retries }}
+    #     SLEEP_TIME: ${{ inputs.sleep_on_retry }}
+    #     BASE_LANG: ${{ inputs.base_lang }}
+    #   run: |
+    #     set -e
+
+    #     if [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ]; then
+    #       ALL_FILES="${{ steps.find-files.outputs.ALL_FILES }}"
+    #     else
+    #       ALL_CHANGED_FILES="${{ steps.changed-files.outputs.all_changed_files }}"
+    #     fi
+
+    #     if [ -z "${ALL_FILES}" ] && [ -z "${ALL_CHANGED_FILES}" ]; then
+    #       echo "No files to upload."
+    #       exit 0
+    #     fi
+        
+    #     chmod +x "${{ github.action_path }}/src/scripts/lokalise_upload.sh"
+
+    #     set +e
+    #     echo "${ALL_FILES:-$ALL_CHANGED_FILES}" | tr ',' '\n' | xargs -P 6 -I {} bash "${{ github.action_path }}/src/scripts/lokalise_upload.sh" "{}" "${{ inputs.project_id }}" "${{ inputs.api_token }}"
+    #     xargs_exit_code=$?
+    #     set -e
+
+    #     if [ $xargs_exit_code -ne 0 ]; then
+    #       echo "File upload failed"
+    #       exit 1
+    #     fi
 
     # - name: Mark Lokalise upload as complete
     #   if: steps.check-first-run.outputs.first_run == 'true'

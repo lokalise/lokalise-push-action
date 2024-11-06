@@ -2,20 +2,8 @@ package main
 
 import (
 	"os"
-	"strings"
+	"parsepaths"
 )
-
-func parsePaths(envVar string) []string {
-	paths := strings.FieldsFunc(envVar, func(r rune) bool {
-		return r == '\n' || r == '\r'
-	})
-
-	for i, path := range paths {
-		paths[i] = strings.TrimSpace(path)
-	}
-
-	return paths
-}
 
 // storeTranslationPaths generates paths and writes them to paths.txt based on environment variables
 func storeTranslationPaths(paths []string, flatNaming, baseLang, fileFormat string) error {
@@ -46,7 +34,7 @@ func storeTranslationPaths(paths []string, flatNaming, baseLang, fileFormat stri
 }
 
 func main() {
-	translationsPaths := parsePaths(os.Getenv("TRANSLATIONS_PATH"))
+	translationsPaths := parsepaths.ParsePaths(os.Getenv("TRANSLATIONS_PATH"))
 	flatNaming := os.Getenv("FLAT_NAMING")
 	baseLang := os.Getenv("BASE_LANG")
 	fileFormat := os.Getenv("FILE_FORMAT")

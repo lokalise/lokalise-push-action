@@ -12,7 +12,7 @@ func WriteToGitHubOutput(name, value string) bool {
 		return false
 	}
 
-	file, err := os.OpenFile(githubOutput, os.O_APPEND|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(githubOutput, os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return false
 	}
