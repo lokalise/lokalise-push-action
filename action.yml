@@ -110,47 +110,48 @@ runs:
         ALL_FILES="${{ steps.find-files.outputs.ALL_FILES }}"
         echo "Contents of GITHUB_OUTPUT:"
         echo "$ALL_FILES"
-    # - name: Install Lokalise CLI
-    #   if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
-    #   shell: bash
-    #   run: |
-    #     set -e
-    #     chmod +x "${{ github.action_path }}/src/scripts/install_lokalise_cli.sh"
-    #     "${{ github.action_path }}/src/scripts/install_lokalise_cli.sh"
 
-    # - name: Push translation files to Lokalise
-    #   if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
-    #   shell: bash
-    #   env:
-    #     CLI_ADD_PARAMS: ${{ inputs.additional_params }}
-    #     MAX_RETRIES: ${{ inputs.max_retries }}
-    #     SLEEP_TIME: ${{ inputs.sleep_on_retry }}
-    #     BASE_LANG: ${{ inputs.base_lang }}
-    #   run: |
-    #     set -e
+    - name: Install Lokalise CLI
+      if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
+      shell: bash
+      run: |
+        set -e
+        chmod +x "${{ github.action_path }}/src/scripts/install_lokalise_cli.sh"
+        "${{ github.action_path }}/src/scripts/install_lokalise_cli.sh"
 
-    #     if [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ]; then
-    #       ALL_FILES="${{ steps.find-files.outputs.ALL_FILES }}"
-    #     else
-    #       ALL_CHANGED_FILES="${{ steps.changed-files.outputs.all_changed_files }}"
-    #     fi
+    - name: Push translation files to Lokalise
+      if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
+      shell: bash
+      env:
+        CLI_ADD_PARAMS: ${{ inputs.additional_params }}
+        MAX_RETRIES: ${{ inputs.max_retries }}
+        SLEEP_TIME: ${{ inputs.sleep_on_retry }}
+        BASE_LANG: ${{ inputs.base_lang }}
+      run: |
+        set -e
 
-    #     if [ -z "${ALL_FILES}" ] && [ -z "${ALL_CHANGED_FILES}" ]; then
-    #       echo "No files to upload."
-    #       exit 0
-    #     fi
-        
-    #     chmod +x "${{ github.action_path }}/src/scripts/lokalise_upload.sh"
+        if [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ]; then
+          FILES="${{ steps.find-files.outputs.ALL_FILES }}"
+        else
+          FILES="${{ steps.changed-files.outputs.all_changed_files }}"
+        fi
 
-    #     set +e
-    #     echo "${ALL_FILES:-$ALL_CHANGED_FILES}" | tr ',' '\n' | xargs -P 6 -I {} bash "${{ github.action_path }}/src/scripts/lokalise_upload.sh" "{}" "${{ inputs.project_id }}" "${{ inputs.api_token }}"
-    #     xargs_exit_code=$?
-    #     set -e
+        if [ -z "$FILES" ]; then
+          echo "No files to upload."
+          exit 0
+        fi
 
-    #     if [ $xargs_exit_code -ne 0 ]; then
-    #       echo "File upload failed"
-    #       exit 1
-    #     fi
+        chmod +x "${{ github.action_path }}/bin/lokalise_upload"
+
+        set +e
+        echo "$FILES" | tr ',' '\n' | xargs -P 6 -I {} "${{ github.action_path }}/bin/lokalise_upload" "{}" "${{ inputs.project_id }}" "${{ inputs.api_token }}"
+        xargs_exit_code=$?
+        set -e
+
+        if [ $xargs_exit_code -ne 0 ]; then
+          echo "File upload failed"
+          exit 1
+        fi
 
     # - name: Mark Lokalise upload as complete
     #   if: steps.check-first-run.outputs.first_run == 'true'

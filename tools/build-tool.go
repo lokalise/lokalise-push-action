@@ -16,6 +16,7 @@ const (
 var binaries = []string{
 	"store_translation_paths",
 	"find_all_files",
+	"lokalise_upload",
 }
 
 func runCommand(cmd string, args []string) error {
