@@ -107,8 +107,9 @@ runs:
     - name: Debug GitHub Output
       shell: bash
       run: |
+        ALL_FILES="${{ steps.find-files.outputs.ALL_FILES }}"
         echo "Contents of GITHUB_OUTPUT:"
-        cat "$GITHUB_OUTPUT"
+        echo "$ALL_FILES"
     # - name: Install Lokalise CLI
     #   if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
     #   shell: bash
