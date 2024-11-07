@@ -69,7 +69,7 @@ runs:
       id: changed-files
       uses: tj-actions/changed-files@v45
       with:
-        files_from_source_file: paths.txt
+        files_from_source_file: lok_action_paths_temp.txt
         separator: ','
 
     - name: Check if this is the first run on the branch
@@ -131,13 +131,14 @@ runs:
 
         if [ -z "$FILES" ]; then
           echo "No files to upload."
-          exit 0
+          exit 1
         fi
 
-        chmod +x "${{ github.action_path }}/bin/lokalise_upload"
+        CMD_PATH="${{ github.action_path }}/bin/lokalise_upload"
+        chmod +x "$CMD_PATH"
 
         set +e
-        echo "$FILES" | tr ',' '\n' | xargs -P 6 -I {} "${{ github.action_path }}/bin/lokalise_upload" "{}" "${{ inputs.project_id }}" "${{ inputs.api_token }}"
+        echo "$FILES" | tr ',' '\n' | xargs -P 6 -I {} "$CMD_PATH" "{}" "${{ inputs.project_id }}" "${{ inputs.api_token }}"
         xargs_exit_code=$?
         set -e
 
