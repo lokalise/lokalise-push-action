@@ -17,10 +17,18 @@ const (
 	maxTotalTime      = 300 // Maximum total retry time in seconds
 )
 
-// returnWithError prints an error message to stderr and exits the program with a non-zero status code.
-func returnWithError(message string) {
-	fmt.Fprintf(os.Stderr, "Error: %s\n", message)
-	os.Exit(1)
+func main() {
+	// Ensure the required command-line arguments are provided
+	if len(os.Args) < 4 {
+		returnWithError("Usage: lokalise_upload <file> <project_id> <token>")
+	}
+
+	filePath := os.Args[1]
+	projectID := os.Args[2]
+	token := os.Args[3]
+
+	// Start the file upload process
+	uploadFile(filePath, projectID, token)
 }
 
 // uploadFile uploads a file to Lokalise using the lokalise2 CLI tool.
@@ -108,20 +116,6 @@ func uploadFile(filePath, projectID, token string) {
 	returnWithError(fmt.Sprintf("Failed to upload file %s after %d attempts.", filePath, maxRetries))
 }
 
-func main() {
-	// Ensure the required command-line arguments are provided
-	if len(os.Args) < 4 {
-		returnWithError("Usage: lokalise_upload <file> <project_id> <token>")
-	}
-
-	filePath := os.Args[1]
-	projectID := os.Args[2]
-	token := os.Args[3]
-
-	// Start the file upload process
-	uploadFile(filePath, projectID, token)
-}
-
 // Helper functions
 
 // getEnvAsInt retrieves an environment variable as an integer.
@@ -160,4 +154,10 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// returnWithError prints an error message to stderr and exits the program with a non-zero status code.
+func returnWithError(message string) {
+	fmt.Fprintf(os.Stderr, "Error: %s\n", message)
+	os.Exit(1)
 }
