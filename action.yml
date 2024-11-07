@@ -57,7 +57,7 @@ runs:
         FILE_FORMAT: "${{ inputs.file_format }}"
       run: |
         set -e
-
+        
         CMD_PATH="${{ github.action_path }}/bin/store_translation_paths"
         chmod +x "$CMD_PATH"
         $("$CMD_PATH") || {
@@ -96,6 +96,7 @@ runs:
         FLAT_NAMING: "${{ inputs.flat_naming }}"
       run: |
         set -e
+        chmod +x "${{ github.action_path }}/src/scripts/translation_paths.sh"
 
         CMD_PATH="${{ github.action_path }}/bin/find_all_files"
         chmod +x "$CMD_PATH"
