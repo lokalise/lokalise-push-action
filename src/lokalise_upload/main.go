@@ -42,10 +42,14 @@ func uploadFile(filePath, projectID, token string) {
 		returnWithError("GITHUB_REF_NAME is required and cannot be empty.")
 	}
 
+	fmt.Printf("Starting to upload file %s\n", filePath)
+
 	startTime := time.Now()
 
 	// Attempt to upload the file, retrying if rate-limited
 	for attempt := 1; attempt <= maxRetries; attempt++ {
+		fmt.Printf("Attempt %d of %d\n", attempt, maxRetries)
+
 		// Construct command arguments for the lokalise2 CLI tool
 		args := []string{
 			fmt.Sprintf("--token=%s", token),
@@ -77,6 +81,7 @@ func uploadFile(filePath, projectID, token string) {
 		err := cmd.Run()
 		if err == nil {
 			// Upload succeeded
+			fmt.Printf("Successfully uploaded file %s\n", filePath)
 			return
 		}
 
