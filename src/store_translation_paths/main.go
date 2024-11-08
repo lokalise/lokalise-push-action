@@ -3,9 +3,10 @@ package main
 import (
 	"fmt"
 	"os"
-	"parsepaths"
 	"path/filepath"
 	"strconv"
+
+	"github.com/bodrovis/lokalise-actions-common/parsepaths"
 )
 
 // storeTranslationPaths generates paths and writes them to paths.txt based on environment variables.

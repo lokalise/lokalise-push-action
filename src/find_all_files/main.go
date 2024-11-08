@@ -2,12 +2,14 @@ package main
 
 import (
 	"fmt"
-	"githuboutput"
 	"os"
-	"parsepaths"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/bodrovis/lokalise-actions-common/githuboutput"
+
+	"github.com/bodrovis/lokalise-actions-common/parsepaths"
 )
 
 // This program finds all translation files based on environment configurations.
