@@ -10,12 +10,28 @@ import (
 	"time"
 )
 
+// exitFunc is a function variable that defaults to os.Exit.
+// This can be overridden in tests to capture exit behavior.
+var exitFunc = os.Exit
+
 const (
 	defaultMaxRetries = 3   // Default number of retries if the upload is rate-limited
 	defaultSleepTime  = 1   // Default initial sleep time in seconds between retries
 	maxSleepTime      = 60  // Maximum sleep time in seconds between retries
 	maxTotalTime      = 300 // Maximum total retry time in seconds
 )
+
+// UploadConfig holds all the necessary configuration for uploading a file
+type UploadConfig struct {
+	FilePath         string
+	ProjectID        string
+	Token            string
+	LangISO          string
+	GitHubRefName    string
+	AdditionalParams string
+	MaxRetries       int
+	SleepTime        int
+}
 
 func main() {
 	// Ensure the required command-line arguments are provided
@@ -27,69 +43,84 @@ func main() {
 	projectID := os.Args[2]
 	token := os.Args[3]
 
-	// Start the file upload process
-	uploadFile(filePath, projectID, token)
+	// Collect environment variables
+	langISO := os.Getenv("BASE_LANG")
+	githubRefName := os.Getenv("GITHUB_REF_NAME")
+	additionalParams := os.Getenv("CLI_ADD_PARAMS")
+	maxRetries := getEnvAsInt("MAX_RETRIES", defaultMaxRetries)
+	sleepTime := getEnvAsInt("SLEEP_TIME", defaultSleepTime)
+
+	// Create the configuration struct
+	config := UploadConfig{
+		FilePath:         filePath,
+		ProjectID:        projectID,
+		Token:            token,
+		LangISO:          langISO,
+		GitHubRefName:    githubRefName,
+		AdditionalParams: additionalParams,
+		MaxRetries:       maxRetries,
+		SleepTime:        sleepTime,
+	}
+
+	validate(config)
+
+	uploadFile(config, executeUpload)
+}
+
+// validate checks if the configuration is valid and contains all necessary fields.
+func validate(config UploadConfig) {
+	validateFile(config.FilePath)
+
+	if config.ProjectID == "" {
+		returnWithError("Project ID is required and cannot be empty.")
+	}
+	if config.Token == "" {
+		returnWithError("API token is required and cannot be empty.")
+	}
+	if config.LangISO == "" {
+		returnWithError("Base language (BASE_LANG) is required and cannot be empty.")
+	}
+	if config.GitHubRefName == "" {
+		returnWithError("GitHub reference name (GITHUB_REF_NAME) is required and cannot be empty.")
+	}
+}
+
+// validateFile checks if the file exists and is not empty.
+func validateFile(filePath string) {
+	if filePath == "" {
+		returnWithError("File path is required and cannot be empty.")
+	}
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		returnWithError(fmt.Sprintf("File %s does not exist.", filePath))
+	}
+}
+
+// Call lokalise2 to upload files
+func executeUpload(args []string) error {
+	cmd := exec.Command("./bin/lokalise2", args...)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 // uploadFile uploads a file to Lokalise using the lokalise2 CLI tool.
 // It handles rate limiting by retrying the upload with exponential backoff.
-func uploadFile(filePath, projectID, token string) {
-	// Retrieve necessary environment variables
-	langISO := os.Getenv("BASE_LANG")
-	additionalParams := os.Getenv("CLI_ADD_PARAMS")
-	githubRefName := os.Getenv("GITHUB_REF_NAME")
-	maxRetries := getEnvAsInt("MAX_RETRIES", defaultMaxRetries)
-	sleepTime := getEnvAsInt("SLEEP_TIME", defaultSleepTime)
+func uploadFile(config UploadConfig, uploadExecutor func(args []string) error) {
+	fmt.Printf("Starting to upload file %s\n", config.FilePath)
 
-	// Validate required inputs
-	validateFile(filePath)
-	if projectID == "" || token == "" || langISO == "" {
-		returnWithError("Project ID, API token, and base language are required and cannot be empty.")
-	}
-	if githubRefName == "" {
-		returnWithError("GITHUB_REF_NAME is required and cannot be empty.")
-	}
-
-	fmt.Printf("Starting to upload file %s\n", filePath)
-
+	args := constructArgs(config)
 	startTime := time.Now()
 
+	sleepTime := config.SleepTime
+
 	// Attempt to upload the file, retrying if rate-limited
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		fmt.Printf("Attempt %d of %d\n", attempt, maxRetries)
+	for attempt := 1; attempt <= config.MaxRetries; attempt++ {
+		fmt.Printf("Attempt %d of %d\n", attempt, config.MaxRetries)
 
-		// Construct command arguments for the lokalise2 CLI tool
-		args := []string{
-			fmt.Sprintf("--token=%s", token),
-			fmt.Sprintf("--project-id=%s", projectID),
-			"file", "upload",
-			fmt.Sprintf("--file=%s", filePath),
-			fmt.Sprintf("--lang-iso=%s", langISO),
-			"--replace-modified",
-			"--include-path",
-			"--distinguish-by-file",
-			"--poll",
-			"--poll-timeout=120s",
-			"--tag-inserted-keys",
-			"--tag-skipped-keys=true",
-			"--tag-updated-keys",
-			"--tags", githubRefName,
-		}
-
-		// Append any additional parameters specified in the environment variable
-		if additionalParams != "" {
-			args = append(args, strings.Fields(additionalParams)...)
-		}
-
-		// Execute the command to upload the file
-		cmd := exec.Command("./bin/lokalise2", args...)
-		cmd.Stdout = io.Discard // Discard standard output
-		cmd.Stderr = os.Stderr  // Redirect standard error to stderr
-
-		err := cmd.Run()
+		err := uploadExecutor(args)
 		if err == nil {
 			// Upload succeeded
-			fmt.Printf("Successfully uploaded file %s\n", filePath)
+			fmt.Printf("Successfully uploaded file %s\n", config.FilePath)
 			return
 		}
 
@@ -100,7 +131,7 @@ func uploadFile(filePath, projectID, token string) {
 
 			// Check if the total retry time has exceeded the maximum allowed time
 			if time.Since(startTime).Seconds() > maxTotalTime {
-				returnWithError(fmt.Sprintf("Max retry time exceeded (%d seconds) for %s. Exiting.", maxTotalTime, filePath))
+				returnWithError(fmt.Sprintf("Max retry time exceeded (%d seconds) for %s. Exiting.", maxTotalTime, config.FilePath))
 			}
 
 			// Exponentially increase the sleep time for the next retry, capped at maxSleepTime
@@ -109,14 +140,39 @@ func uploadFile(filePath, projectID, token string) {
 		}
 
 		// If the error is not due to rate limiting, exit with an error message
-		returnWithError(fmt.Sprintf("Permanent error during upload for %s: %v", filePath, err))
+		returnWithError(fmt.Sprintf("Permanent error during upload for %s: %v", config.FilePath, err))
 	}
 
 	// If all retries have been exhausted, exit with an error message
-	returnWithError(fmt.Sprintf("Failed to upload file %s after %d attempts.", filePath, maxRetries))
+	returnWithError(fmt.Sprintf("Failed to upload file %s after %d attempts.", config.FilePath, config.MaxRetries))
 }
 
-// Helper functions
+// constructArgs prepares the arguments for the lokalise2 CLI.
+func constructArgs(config UploadConfig) []string {
+	args := []string{
+		fmt.Sprintf("--token=%s", config.Token),
+		fmt.Sprintf("--project-id=%s", config.ProjectID),
+		"file", "upload",
+		fmt.Sprintf("--file=%s", config.FilePath),
+		fmt.Sprintf("--lang-iso=%s", config.LangISO),
+		"--replace-modified",
+		"--include-path",
+		"--distinguish-by-file",
+		"--poll",
+		"--poll-timeout=120s",
+		"--tag-inserted-keys",
+		"--tag-skipped-keys=true",
+		"--tag-updated-keys",
+		"--tags", config.GitHubRefName,
+	}
+
+	// Add additional params from the environment variable
+	if config.AdditionalParams != "" {
+		args = append(args, strings.Fields(config.AdditionalParams)...)
+	}
+
+	return args
+}
 
 // getEnvAsInt retrieves an environment variable as an integer.
 // Returns the default value if the variable is not set.
@@ -131,16 +187,6 @@ func getEnvAsInt(key string, defaultVal int) int {
 		returnWithError(fmt.Sprintf("Environment variable %s must be a positive integer.", key))
 	}
 	return val
-}
-
-// validateFile checks if the file exists and is not empty.
-func validateFile(filePath string) {
-	if filePath == "" {
-		returnWithError("File path is required and cannot be empty.")
-	}
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		returnWithError(fmt.Sprintf("File %s does not exist.", filePath))
-	}
 }
 
 // isRateLimitError checks if the error is due to rate limiting (HTTP status code 429).
@@ -159,5 +205,5 @@ func min(a, b int) int {
 // returnWithError prints an error message to stderr and exits the program with a non-zero status code.
 func returnWithError(message string) {
 	fmt.Fprintf(os.Stderr, "Error: %s\n", message)
-	os.Exit(1)
+	exitFunc(1)
 }

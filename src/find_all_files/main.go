@@ -16,6 +16,71 @@ import (
 // It supports both flat and nested directory naming conventions and outputs the list
 // of translation files found to GitHub Actions output.
 
+// exitFunc is a function variable that defaults to os.Exit.
+// This can be overridden in tests to capture exit behavior.
+var exitFunc = os.Exit
+
+func main() {
+	// Read and validate environment variables
+	translationsPaths, baseLang, fileFormat := validateEnvironment()
+
+	// Parse flatNaming parameter
+	flatNaming := parseFlatNaming(os.Getenv("FLAT_NAMING"))
+
+	// Find all translation files based on the provided configurations
+	allFiles, err := findAllTranslationFiles(translationsPaths, flatNaming, baseLang, fileFormat)
+	if err != nil {
+		returnWithError(fmt.Sprintf("unable to find translation files: %v", err))
+	}
+
+	// Process and write `allFiles` to GitHub Actions output
+	processAllFiles(allFiles, githuboutput.WriteToGitHubOutput)
+}
+
+// validateEnvironment ensures required environment variables are set and parses initial values.
+func validateEnvironment() ([]string, string, string) {
+	translationsPaths := parsepaths.ParsePaths(os.Getenv("TRANSLATIONS_PATH"))
+	baseLang := os.Getenv("BASE_LANG")
+	fileFormat := os.Getenv("FILE_FORMAT")
+
+	if len(translationsPaths) == 0 || baseLang == "" || fileFormat == "" {
+		returnWithError("missing required environment variables")
+	}
+
+	return translationsPaths, baseLang, fileFormat
+}
+
+// parseFlatNaming parses the `FLAT_NAMING` environment variable as a boolean.
+func parseFlatNaming(flatNamingEnv string) bool {
+	if flatNamingEnv == "" {
+		return false
+	}
+
+	flatNaming, err := strconv.ParseBool(flatNamingEnv)
+	if err != nil {
+		returnWithError("invalid value for FLAT_NAMING environment variable; expected true or false")
+	}
+
+	return flatNaming
+}
+
+// processAllFiles writes the found translation files to GitHub Actions output.
+func processAllFiles(allFiles []string, writeOutput func(key, value string) bool) {
+	if len(allFiles) > 0 {
+		// Join all file paths into a comma-separated string
+		allFilesStr := strings.Join(allFiles, ",")
+		// Write the list of files and set has_files to true
+		if !writeOutput("ALL_FILES", allFilesStr) || !writeOutput("has_files", "true") {
+			returnWithError("cannot write to GITHUB_OUTPUT")
+		}
+	} else {
+		// No files found, set has_files to false
+		if !writeOutput("has_files", "false") {
+			returnWithError("cannot write to GITHUB_OUTPUT")
+		}
+	}
+}
+
 // findAllTranslationFiles searches for translation files based on the given paths and naming conventions.
 // It supports both flat naming (all translations in one file) and nested directories per language.
 func findAllTranslationFiles(paths []string, flatNaming bool, baseLang, fileFormat string) ([]string, error) {
@@ -66,51 +131,7 @@ func findAllTranslationFiles(paths []string, flatNaming bool, baseLang, fileForm
 	return allFiles, nil
 }
 
-func main() {
-	// Read and validate environment variables
-	translationsPaths := parsepaths.ParsePaths(os.Getenv("TRANSLATIONS_PATH"))
-	flatNamingEnv := os.Getenv("FLAT_NAMING")
-	baseLang := os.Getenv("BASE_LANG")
-	fileFormat := os.Getenv("FILE_FORMAT")
-
-	// Ensure that required environment variables are set
-	if len(translationsPaths) == 0 || baseLang == "" || fileFormat == "" {
-		returnWithError("missing required environment variables")
-	}
-
-	// Parse flatNaming as boolean
-	flatNaming := false
-	if flatNamingEnv != "" {
-		var err error
-		flatNaming, err = strconv.ParseBool(flatNamingEnv)
-		if err != nil {
-			returnWithError("invalid value for FLAT_NAMING environment variable; expected true or false")
-		}
-	}
-
-	// Find all translation files based on the provided configurations
-	allFiles, err := findAllTranslationFiles(translationsPaths, flatNaming, baseLang, fileFormat)
-	if err != nil {
-		returnWithError(fmt.Sprintf("unable to find translation files: %v", err))
-	}
-
-	// Write whether files were found to GitHub Actions output
-	if len(allFiles) > 0 {
-		// Join all file paths into a comma-separated string
-		allFilesStr := strings.Join(allFiles, ",")
-		// Write the list of files and set has_files to true
-		if !githuboutput.WriteToGitHubOutput("ALL_FILES", allFilesStr) || !githuboutput.WriteToGitHubOutput("has_files", "true") {
-			returnWithError("cannot write to GITHUB_OUTPUT")
-		}
-	} else {
-		// No files found, set has_files to false
-		if !githuboutput.WriteToGitHubOutput("has_files", "false") {
-			returnWithError("cannot write to GITHUB_OUTPUT")
-		}
-	}
-}
-
 func returnWithError(message string) {
 	fmt.Fprintf(os.Stderr, "Error: %s\n", message)
-	os.Exit(1)
+	exitFunc(1)
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -9,16 +10,40 @@ import (
 	"github.com/bodrovis/lokalise-actions-common/parsepaths"
 )
 
+// exitFunc is a function variable that defaults to os.Exit.
+// This can be overridden in tests to capture exit behavior.
+var exitFunc = os.Exit
+
+// validateEnvironment checks and retrieves the necessary environment variables.
+func validateEnvironment() ([]string, string, string) {
+	translationsPaths := parsepaths.ParsePaths(os.Getenv("TRANSLATIONS_PATH"))
+	baseLang := os.Getenv("BASE_LANG")
+	fileFormat := os.Getenv("FILE_FORMAT")
+
+	if len(translationsPaths) == 0 || baseLang == "" || fileFormat == "" {
+		returnWithError("missing required environment variables")
+	}
+
+	return translationsPaths, baseLang, fileFormat
+}
+
+// parseFlatNaming parses the FLAT_NAMING environment variable as a boolean.
+func parseFlatNaming(flatNamingEnv string) bool {
+	if flatNamingEnv == "" {
+		return false
+	}
+
+	flatNaming, err := strconv.ParseBool(flatNamingEnv)
+	if err != nil {
+		returnWithError("invalid value for FLAT_NAMING environment variable; expected true or false")
+	}
+
+	return flatNaming
+}
+
 // storeTranslationPaths generates paths and writes them to paths.txt based on environment variables.
 // It constructs the appropriate file paths or glob patterns depending on the naming convention.
-func storeTranslationPaths(paths []string, flatNaming bool, baseLang, fileFormat string) error {
-	// Create (or overwrite) the txt file to store the generated paths.
-	file, err := os.Create("lok_action_paths_temp.txt")
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
+func storeTranslationPaths(paths []string, flatNaming bool, baseLang, fileFormat string, writer io.Writer) error {
 	for _, path := range paths {
 		if path == "" {
 			continue // Skip empty paths.
@@ -36,7 +61,7 @@ func storeTranslationPaths(paths []string, flatNaming bool, baseLang, fileFormat
 		}
 
 		// Write the formatted path to the file, adding a newline character.
-		if _, err := file.WriteString(formattedPath + "\n"); err != nil {
+		if _, err := writer.Write([]byte(formattedPath + "\n")); err != nil {
 			return err
 		}
 	}
@@ -45,32 +70,26 @@ func storeTranslationPaths(paths []string, flatNaming bool, baseLang, fileFormat
 }
 
 func main() {
-	// Read environment variables and parse the translations paths.
-	translationsPaths := parsepaths.ParsePaths(os.Getenv("TRANSLATIONS_PATH"))
-	flatNamingEnv := os.Getenv("FLAT_NAMING")
-	baseLang := os.Getenv("BASE_LANG")
-	fileFormat := os.Getenv("FILE_FORMAT")
+	// Validate and parse environment variables
+	translationsPaths, baseLang, fileFormat := validateEnvironment()
 
-	// Validate that the required environment variables are set.
-	if len(translationsPaths) == 0 || baseLang == "" || fileFormat == "" {
-		fmt.Fprintln(os.Stderr, "Error: missing required environment variables")
-		os.Exit(1)
-	}
+	// Parse flat naming
+	flatNaming := parseFlatNaming(os.Getenv("FLAT_NAMING"))
 
-	// Parse FLAT_NAMING environment variable as a boolean.
-	flatNaming := false
-	if flatNamingEnv != "" {
-		var err error
-		flatNaming, err = strconv.ParseBool(flatNamingEnv)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error: invalid value for FLAT_NAMING environment variable; expected true or false")
-			os.Exit(1)
-		}
+	// Open the output file
+	file, err := os.Create("lok_action_paths_temp.txt")
+	if err != nil {
+		returnWithError(fmt.Sprintf("cannot create output file: %v", err))
 	}
+	defer file.Close()
 
-	// Generate and store the translation paths.
-	if err := storeTranslationPaths(translationsPaths, flatNaming, baseLang, fileFormat); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+	// Generate and store the translation paths
+	if err := storeTranslationPaths(translationsPaths, flatNaming, baseLang, fileFormat, file); err != nil {
+		returnWithError(fmt.Sprintf("cannot store translation paths: %v", err))
 	}
+}
+
+func returnWithError(message string) {
+	fmt.Fprintf(os.Stderr, "Error: %s\n", message)
+	exitFunc(1)
 }
