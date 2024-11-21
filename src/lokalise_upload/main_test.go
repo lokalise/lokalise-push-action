@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -24,11 +26,44 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+func TestExecuteUploadTimeout(t *testing.T) {
+	// Mock to replace the real call to lokalise2
+	mockBinary := "./fixtures/mock_sleep"
+	if runtime.GOOS == "windows" {
+		mockBinary += ".exe"
+	}
+
+	// Build the mock binary if needed
+	buildMockBinaryIfNeeded(t, "./fixtures/sleep.go", mockBinary)
+
+	args := []string{"sleep"} // Argument to trigger sleep in the mock process
+	uploadTimeout := 1        // Timeout in seconds, smaller than sleep duration
+
+	fmt.Println("Executing upload with timeout...")
+
+	// Call the actual executeUpload function
+	err := executeUpload(mockBinary, args, uploadTimeout)
+
+	fmt.Println("Execution completed.")
+
+	// Debugging: Display the exact error received
+	if err != nil {
+		fmt.Printf("Error returned: %v\n", err)
+	}
+
+	// Validate the result
+	if err == nil {
+		t.Errorf("Expected timeout error, but got nil")
+	} else if err.Error() != "command timed out" {
+		t.Errorf("Expected 'command timed out' error, but got: %v", err)
+	}
+}
+
 func TestUploadFile(t *testing.T) {
 	tests := []struct {
 		name         string
 		config       UploadConfig
-		mockExecutor func(args []string) error
+		mockExecutor func(cmdPath string, args []string, uploadTimeout int) error
 		shouldError  bool
 	}{
 		{
@@ -41,8 +76,9 @@ func TestUploadFile(t *testing.T) {
 				GitHubRefName: "main",
 				MaxRetries:    3,
 				SleepTime:     1,
+				UploadTimeout: 120,
 			},
-			mockExecutor: func(args []string) error {
+			mockExecutor: func(cmdPath string, args []string, uploadTimeout int) error {
 				return nil // Simulate success
 			},
 			shouldError: false,
@@ -57,10 +93,11 @@ func TestUploadFile(t *testing.T) {
 				GitHubRefName: "main",
 				MaxRetries:    3,
 				SleepTime:     1,
+				UploadTimeout: 120,
 			},
-			mockExecutor: func() func(args []string) error {
+			mockExecutor: func() func(cmdPath string, args []string, uploadTimeout int) error {
 				callCount := 0
-				return func(args []string) error {
+				return func(cmdPath string, args []string, uploadTimeout int) error {
 					callCount++
 					if callCount == 1 {
 						return errors.New("API request error 429")
@@ -80,8 +117,9 @@ func TestUploadFile(t *testing.T) {
 				GitHubRefName: "main",
 				MaxRetries:    3,
 				SleepTime:     1,
+				UploadTimeout: 120,
 			},
-			mockExecutor: func(args []string) error {
+			mockExecutor: func(cmdPath string, args []string, uploadTimeout int) error {
 				return errors.New("Permanent error")
 			},
 			shouldError: true,
@@ -96,8 +134,9 @@ func TestUploadFile(t *testing.T) {
 				GitHubRefName: "main",
 				MaxRetries:    2,
 				SleepTime:     1,
+				UploadTimeout: 120,
 			},
-			mockExecutor: func(args []string) error {
+			mockExecutor: func(cmdPath string, args []string, uploadTimeout int) error {
 				return errors.New("API request error 429")
 			},
 			shouldError: true,
@@ -108,6 +147,7 @@ func TestUploadFile(t *testing.T) {
 		tt := tt // Capture range variable
 
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			// Create a temporary file for testing
 			if tt.config.FilePath != "" {
 				f, err := os.Create(tt.config.FilePath)
@@ -149,6 +189,7 @@ func TestValidate(t *testing.T) {
 				Token:         "valid_token",
 				LangISO:       "en",
 				GitHubRefName: "main",
+				PollTimeout:   "120s",
 			},
 			shouldError: false,
 		},
@@ -160,6 +201,7 @@ func TestValidate(t *testing.T) {
 				Token:         "valid_token",
 				LangISO:       "en",
 				GitHubRefName: "main",
+				PollTimeout:   "120s",
 			},
 			shouldError: true,
 		},
@@ -171,6 +213,7 @@ func TestValidate(t *testing.T) {
 				Token:         "valid_token",
 				LangISO:       "en",
 				GitHubRefName: "main",
+				PollTimeout:   "120s",
 			},
 			shouldError: true,
 		},
@@ -182,6 +225,7 @@ func TestValidate(t *testing.T) {
 				Token:         "valid_token",
 				LangISO:       "en",
 				GitHubRefName: "main",
+				PollTimeout:   "120s",
 			},
 			shouldError: true,
 		},
@@ -193,6 +237,7 @@ func TestValidate(t *testing.T) {
 				Token:         "",
 				LangISO:       "en",
 				GitHubRefName: "main",
+				PollTimeout:   "120s",
 			},
 			shouldError: true,
 		},
@@ -204,6 +249,7 @@ func TestValidate(t *testing.T) {
 				Token:         "valid_token",
 				LangISO:       "",
 				GitHubRefName: "main",
+				PollTimeout:   "120s",
 			},
 			shouldError: true,
 		},
@@ -215,6 +261,7 @@ func TestValidate(t *testing.T) {
 				Token:         "valid_token",
 				LangISO:       "en",
 				GitHubRefName: "",
+				PollTimeout:   "120s",
 			},
 			shouldError: true,
 		},
@@ -266,6 +313,7 @@ func TestConstructArgs(t *testing.T) {
 				Token:         "test_token",
 				LangISO:       "en",
 				GitHubRefName: "main",
+				PollTimeout:   "120s",
 			},
 			expected: []string{
 				"--token=test_token",
@@ -293,6 +341,7 @@ func TestConstructArgs(t *testing.T) {
 				LangISO:          "en",
 				GitHubRefName:    "main",
 				AdditionalParams: "--custom-param=value1 --another-param=value2",
+				PollTimeout:      "120s",
 			},
 			expected: []string{
 				"--token=test_token",
@@ -320,6 +369,7 @@ func TestConstructArgs(t *testing.T) {
 				Token:         "",
 				LangISO:       "",
 				GitHubRefName: "",
+				PollTimeout:   "",
 			},
 			expected: []string{
 				"--token=",
@@ -331,7 +381,7 @@ func TestConstructArgs(t *testing.T) {
 				"--include-path",
 				"--distinguish-by-file",
 				"--poll",
-				"--poll-timeout=120s",
+				"--poll-timeout=",
 				"--tag-inserted-keys",
 				"--tag-skipped-keys=true",
 				"--tag-updated-keys",
@@ -366,4 +416,25 @@ func normalizeArgs(args []string) []string {
 		normalized[i] = strings.TrimSpace(arg)
 	}
 	return normalized
+}
+
+// buildMockBinaryIfNeeded compiles the binary only if it doesn’t exist or is outdated.
+func buildMockBinaryIfNeeded(t *testing.T, sourcePath, outputPath string) {
+	// Check if the binary already exists and is up-to-date
+	sourceInfo, err := os.Stat(sourcePath)
+	if err != nil {
+		t.Fatalf("Failed to stat source file: %v", err)
+	}
+
+	binaryInfo, err := os.Stat(outputPath)
+	if err == nil && binaryInfo.ModTime().After(sourceInfo.ModTime()) {
+		// Binary exists and is newer than the source, no need to rebuild
+		return
+	}
+
+	// Build the binary
+	cmd := exec.Command("go", "build", "-o", outputPath, sourcePath)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to build mock binary: %v", err)
+	}
 }

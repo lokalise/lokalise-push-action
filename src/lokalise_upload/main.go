@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,10 +17,12 @@ import (
 var exitFunc = os.Exit
 
 const (
-	defaultMaxRetries = 3   // Default number of retries if the upload is rate-limited
-	defaultSleepTime  = 1   // Default initial sleep time in seconds between retries
-	maxSleepTime      = 60  // Maximum sleep time in seconds between retries
-	maxTotalTime      = 300 // Maximum total retry time in seconds
+	defaultMaxRetries    = 3      // Default number of retries if the upload is rate-limited
+	defaultSleepTime     = 1      // Default initial sleep time in seconds between retries
+	maxSleepTime         = 60     // Maximum sleep time in seconds between retries
+	maxTotalTime         = 300    // Maximum total retry time in seconds
+	defaultPollTimeout   = "120s" // Upload poll timeout
+	defaultUploadTimeout = 120    // Timeout for the upload itself
 )
 
 // UploadConfig holds all the necessary configuration for uploading a file
@@ -31,6 +35,8 @@ type UploadConfig struct {
 	AdditionalParams string
 	MaxRetries       int
 	SleepTime        int
+	PollTimeout      string
+	UploadTimeout    int
 }
 
 func main() {
@@ -60,6 +66,8 @@ func main() {
 		AdditionalParams: additionalParams,
 		MaxRetries:       maxRetries,
 		SleepTime:        sleepTime,
+		PollTimeout:      defaultPollTimeout,
+		UploadTimeout:    defaultUploadTimeout,
 	}
 
 	validate(config)
@@ -96,16 +104,31 @@ func validateFile(filePath string) {
 }
 
 // Call lokalise2 to upload files
-func executeUpload(args []string) error {
-	cmd := exec.Command("./bin/lokalise2", args...)
+func executeUpload(cmdPath string, args []string, uploadTimeout int) error {
+	// Timeout for the lokalise2 call
+	timeout := time.Duration(uploadTimeout) * time.Second
+
+	// Create a context with a timeout
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, cmdPath, args...)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+
+	err := cmd.Run()
+
+	// Check if the context was canceled due to timeout
+	if ctx.Err() == context.DeadlineExceeded {
+		return errors.New("command timed out")
+	}
+
+	return err
 }
 
 // uploadFile uploads a file to Lokalise using the lokalise2 CLI tool.
 // It handles rate limiting by retrying the upload with exponential backoff.
-func uploadFile(config UploadConfig, uploadExecutor func(args []string) error) {
+func uploadFile(config UploadConfig, uploadExecutor func(cmdPath string, args []string, uploadTimeout int) error) {
 	fmt.Printf("Starting to upload file %s\n", config.FilePath)
 
 	args := constructArgs(config)
@@ -117,7 +140,7 @@ func uploadFile(config UploadConfig, uploadExecutor func(args []string) error) {
 	for attempt := 1; attempt <= config.MaxRetries; attempt++ {
 		fmt.Printf("Attempt %d of %d\n", attempt, config.MaxRetries)
 
-		err := uploadExecutor(args)
+		err := uploadExecutor("./bin/lokalise2", args, config.UploadTimeout)
 		if err == nil {
 			// Upload succeeded
 			fmt.Printf("Successfully uploaded file %s\n", config.FilePath)
@@ -159,7 +182,7 @@ func constructArgs(config UploadConfig) []string {
 		"--include-path",
 		"--distinguish-by-file",
 		"--poll",
-		"--poll-timeout=120s",
+		fmt.Sprintf("--poll-timeout=%s", config.PollTimeout),
 		"--tag-inserted-keys",
 		"--tag-skipped-keys=true",
 		"--tag-updated-keys",
