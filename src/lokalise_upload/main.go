@@ -17,12 +17,12 @@ import (
 var exitFunc = os.Exit
 
 const (
-	defaultMaxRetries    = 3      // Default number of retries if the upload is rate-limited
-	defaultSleepTime     = 1      // Default initial sleep time in seconds between retries
-	maxSleepTime         = 60     // Maximum sleep time in seconds between retries
-	maxTotalTime         = 300    // Maximum total retry time in seconds
-	defaultPollTimeout   = "120s" // Upload poll timeout
-	defaultUploadTimeout = 120    // Timeout for the upload itself
+	defaultMaxRetries    = 3   // Default number of retries if the upload is rate-limited
+	defaultSleepTime     = 1   // Default initial sleep time in seconds between retries
+	maxSleepTime         = 60  // Maximum sleep time in seconds between retries
+	maxTotalTime         = 300 // Maximum total retry time in seconds
+	defaultPollTimeout   = 120 // Upload poll timeout
+	defaultUploadTimeout = 120 // Timeout for the upload itself
 )
 
 // UploadConfig holds all the necessary configuration for uploading a file
@@ -35,7 +35,7 @@ type UploadConfig struct {
 	AdditionalParams string
 	MaxRetries       int
 	SleepTime        int
-	PollTimeout      string
+	PollTimeout      int
 	UploadTimeout    int
 }
 
@@ -53,8 +53,6 @@ func main() {
 	langISO := os.Getenv("BASE_LANG")
 	githubRefName := os.Getenv("GITHUB_REF_NAME")
 	additionalParams := os.Getenv("CLI_ADD_PARAMS")
-	maxRetries := getEnvAsInt("MAX_RETRIES", defaultMaxRetries)
-	sleepTime := getEnvAsInt("SLEEP_TIME", defaultSleepTime)
 
 	// Create the configuration struct
 	config := UploadConfig{
@@ -64,10 +62,10 @@ func main() {
 		LangISO:          langISO,
 		GitHubRefName:    githubRefName,
 		AdditionalParams: additionalParams,
-		MaxRetries:       maxRetries,
-		SleepTime:        sleepTime,
-		PollTimeout:      defaultPollTimeout,
-		UploadTimeout:    defaultUploadTimeout,
+		MaxRetries:       getEnvAsInt("MAX_RETRIES", defaultMaxRetries),
+		SleepTime:        getEnvAsInt("SLEEP_TIME", defaultSleepTime),
+		PollTimeout:      getEnvAsInt("UPLOAD_POLL_TIMEOUT", defaultPollTimeout),
+		UploadTimeout:    getEnvAsInt("UPLOAD_TIMEOUT", defaultUploadTimeout),
 	}
 
 	validate(config)
@@ -182,7 +180,7 @@ func constructArgs(config UploadConfig) []string {
 		"--include-path",
 		"--distinguish-by-file",
 		"--poll",
-		fmt.Sprintf("--poll-timeout=%s", config.PollTimeout),
+		fmt.Sprintf("--poll-timeout=%ds", config.PollTimeout),
 		"--tag-inserted-keys",
 		"--tag-skipped-keys=true",
 		"--tag-updated-keys",

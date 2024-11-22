@@ -26,6 +26,10 @@ inputs:
     description: 'Additional parameters for Lokalise CLI on push. Find all supported options at https://github.com/lokalise/lokalise-cli-2-go/blob/main/docs/lokalise2_file_upload.md'
     required: false
     default: ''
+  flat_naming:
+    description: 'Use flat naming convention (true/false). If true, expects files like locales/en.json instead of locales/en/file.json'
+    required: false
+    default: false
   max_retries:
     description: 'Maximum number of retries on rate limit errors'
     required: false
@@ -34,10 +38,14 @@ inputs:
     description: 'Number of seconds to sleep before retrying'
     required: false
     default: 1
-  flat_naming:
-    description: 'Use flat naming convention (true/false). If true, expects files like locales/en.json instead of locales/en/file.json'
+  upload_timeout:
+    description: 'Timeout for the upload operation (in seconds)'
     required: false
-    default: false
+    default: 120
+  upload_poll_timeout:
+    description: 'Timeout for the upload poll operation (in seconds)'
+    required: false
+    default: 120
 permissions:
   contents: write
 branding:
@@ -116,10 +124,12 @@ runs:
       if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
       shell: bash
       env:
+        BASE_LANG: ${{ inputs.base_lang }}
         CLI_ADD_PARAMS: ${{ inputs.additional_params }}
         MAX_RETRIES: ${{ inputs.max_retries }}
         SLEEP_TIME: ${{ inputs.sleep_on_retry }}
-        BASE_LANG: ${{ inputs.base_lang }}
+        UPLOAD_TIMEOUT: ${{ inputs.upload_timeout }}
+        UPLOAD_POLL_TIMEOUT: ${{ inputs.upload_poll_timeout }}
       run: |
         set -e
 
