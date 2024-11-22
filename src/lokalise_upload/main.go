@@ -45,23 +45,14 @@ func main() {
 		returnWithError("Usage: lokalise_upload <file> <project_id> <token>")
 	}
 
-	filePath := os.Args[1]
-	projectID := os.Args[2]
-	token := os.Args[3]
-
-	// Collect environment variables
-	langISO := os.Getenv("BASE_LANG")
-	githubRefName := os.Getenv("GITHUB_REF_NAME")
-	additionalParams := os.Getenv("CLI_ADD_PARAMS")
-
 	// Create the configuration struct
 	config := UploadConfig{
-		FilePath:         filePath,
-		ProjectID:        projectID,
-		Token:            token,
-		LangISO:          langISO,
-		GitHubRefName:    githubRefName,
-		AdditionalParams: additionalParams,
+		FilePath:         os.Args[1],
+		ProjectID:        os.Args[2],
+		Token:            os.Args[3],
+		LangISO:          os.Getenv("BASE_LANG"),
+		GitHubRefName:    os.Getenv("GITHUB_REF_NAME"),
+		AdditionalParams: os.Getenv("CLI_ADD_PARAMS"),
 		MaxRetries:       getEnvAsInt("MAX_RETRIES", defaultMaxRetries),
 		SleepTime:        getEnvAsInt("SLEEP_TIME", defaultSleepTime),
 		PollTimeout:      getEnvAsInt("UPLOAD_POLL_TIMEOUT", defaultPollTimeout),
