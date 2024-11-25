@@ -114,7 +114,7 @@ runs:
 
     - name: Install Lokalise CLIv2
       if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
-      uses: bodrovis/install-lokalise-cli-v2@1.0.0
+      uses: bodrovis/install-lokalise-cli-v2@v1.0.0
 
     - name: Push translation files to Lokalise
       if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
