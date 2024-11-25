@@ -112,13 +112,9 @@ runs:
           exit 1
         }
 
-    - name: Install Lokalise CLI
+    - name: Install Lokalise CLIv2
       if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
-      shell: bash
-      run: |
-        set -e
-        chmod +x "${{ github.action_path }}/src/scripts/install_lokalise_cli.sh"
-        "${{ github.action_path }}/src/scripts/install_lokalise_cli.sh"
+      uses: bodrovis/install-lokalise-cli-v2@1.0.0
 
     - name: Push translation files to Lokalise
       if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
