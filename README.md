@@ -42,7 +42,7 @@ jobs:
 
 You'll need to provide some parameters for the action. These can be set as environment variables, secrets, or passed directly. Refer to the [General setup](https://developers.lokalise.com/docs/github-actions#general-setup-overview) section for detailed instructions.
 
-#### **Mandatory Parameters**
+#### Mandatory parameters
 
 - `api_token` — Lokalise API token with read/write permissions.
 - `project_id` — Your Lokalise project ID.
@@ -50,7 +50,7 @@ You'll need to provide some parameters for the action. These can be set as envir
 - `file_format` — Translation file format. For example, if you're using JSON files, just put `json` (no leading dot needed). Defaults to `json`.
 - `base_lang` — The base language of your project (e.g., `en` for English). Defaults to `en`.
 
-#### **Optional Parameters**
+#### Optional parameters
 
 - `additional_params` — Extra parameters to pass to the [Lokalise CLI when pushing files](https://github.com/lokalise/lokalise-cli-2-go/blob/main/docs/lokalise2_file_upload.md). For example, you can use `--convert-placeholders` to handle placeholders. You can include multiple CLI arguments as needed. Defaults to an empty string.
 - `flat_naming` — Use flat naming convention. Set to `true` if your translation files follow a flat naming pattern like `locales/en.json` instead of `locales/en/file.json`. Defaults to `false`.
