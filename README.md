@@ -24,7 +24,7 @@ jobs:
           fetch-depth: 0
 
       - name: Push to Lokalise
-        uses: lokalise/lokalise-push-action@v2.0.0
+        uses: lokalise/lokalise-push-action@v3.0.0
         with:
           api_token: ${{ secrets.LOKALISE_API_TOKEN }}
           project_id: LOKALISE_PROJECT_ID
@@ -42,37 +42,47 @@ jobs:
 
 You'll need to provide some parameters for the action. These can be set as environment variables, secrets, or passed directly. Refer to the [General setup](https://developers.lokalise.com/docs/github-actions#general-setup-overview) section for detailed instructions.
 
-The following parameters are **mandatory**:
+#### **Mandatory Parameters**
 
-- `api_token` — Lokalise API token.
+- `api_token` — Lokalise API token with read/write permissions.
 - `project_id` — Your Lokalise project ID.
-- `translations_path` — One or more paths to your translations. For example, if your translations are stored in the `locales` folder at the project root, use `locales` (leave out leading and trailing slashes).
-- `file_format` — Translation file format. For example, if you're using JSON files, just put `json` (no leading dot needed).
-- `base_lang` — The base language of your project (e.g., `en` for English).
+- `translations_path` — One or more paths to your translations. For example, if your translations are stored in the `locales` folder at the project root, use `locales` (leave out leading and trailing slashes). Defaults to `locales`.
+- `file_format` — Translation file format. For example, if you're using JSON files, just put `json` (no leading dot needed). Defaults to `json`.
+- `base_lang` — The base language of your project (e.g., `en` for English). Defaults to `en`.
 
-**Optional** parameters include:
+#### **Optional Parameters**
 
-- `additional_params` — Extra parameters to pass to the [Lokalise CLI when pushing files](https://github.com/lokalise/lokalise-cli-2-go/blob/main/docs/lokalise2_file_upload.md). For example, you can use `--convert-placeholders` to handle placeholders. You can include multiple CLI arguments as needed.
-* `max_retries` — Maximum number of retries on rate limit errors (HTTP 429). The default value is `3`.
-* `sleep_on_retry` — Number of seconds to sleep before retrying on rate limit errors. The default value is `1`.
+- `additional_params` — Extra parameters to pass to the [Lokalise CLI when pushing files](https://github.com/lokalise/lokalise-cli-2-go/blob/main/docs/lokalise2_file_upload.md). For example, you can use `--convert-placeholders` to handle placeholders. You can include multiple CLI arguments as needed. Defaults to an empty string.
+- `flat_naming` — Use flat naming convention. Set to `true` if your translation files follow a flat naming pattern like `locales/en.json` instead of `locales/en/file.json`. Defaults to `false`.
+- `max_retries` — Maximum number of retries on rate limit errors (HTTP 429). Defaults to `3`.
+- `sleep_on_retry` — Number of seconds to sleep before retrying on rate limit errors. Defaults to `1`.
+- `upload_timeout` — Timeout for the upload operation, in seconds. Defaults to `120`.
+- `upload_poll_timeout` — Timeout for the upload poll operation, in seconds. Defaults to `120`.
 
 ## Technical details
 
 ### How this action works
 
-When triggered, this action performs the following steps:
+When triggered, this action follows a multi-step process to detect changes in translation files and upload them to Lokalise:
 
-1. Detects all changed translation files since the previous commit for the base language in the specified format under the `translations_path`.
-2. Uploads modified translation files to the specified project in parallel, handling up to six requests simultaneously.
-3. Each translation key is tagged with the name of the branch that triggered the workflow.
+1. **Detect changed files**:
+   - The action identifies all changed translation files for the base language specified under the `translations_path`.
+   - **Important**: Changes are detected **only between the latest commit and the one preceding it**. This ensures that the action processes incremental changes rather than scanning the entire repository.
 
-If no changes have been detected in step 1, the following logic applies:
+2. **Upload modified files**:
+   - Any detected changes are uploaded to the specified Lokalise project in parallel, with up to six requests being processed simultaneously.
+   - Each translation key is tagged with the name of the branch that triggered the workflow for better traceability in Lokalise.
 
-1. The action checks if this is the first run on the triggering branch. To achieve that, it searches for a `lokalise-upload-complete` tag.
-   - If this tag is found, it means that the initial push has already been completed. The action will then exit.
-2. If the tag is not found, the action will perform an initial push to Lokalise by uploading all translation files for the base language.
-3. The action creates a `lokalise-upload-complete` tag, indicating that the initial setup has been successfully completed.
-   - It is recommended to pull changes from the triggering branch to your local repo to include this tag into your local history.
+3. **Handle initial push**:
+   - If no changes are detected between the last two commits, the action determines if it is running for the first time on the branch:
+     - **First run**: The action checks for the presence of a `lokalise-upload-complete` tag.
+       - If the tag is **not found**, it performs an initial upload, processing all translation files for the base language.
+       - After successfully uploading all files, the action creates a `lokalise-upload-complete` tag to mark the initial setup as complete.
+     - **Subsequent runs**: If the tag is found, the action exits without uploading any files, as the initial push has already been completed.
+
+4. **Mark completion**:
+   - For the first run on the branch, after completing the initial upload, the action pushes the `lokalise-upload-complete` tag to the remote repository.
+   - **Recommendation**: Pull the changes to your local repository to ensure the tag is included in your local Git history.
 
 For more information on assumptions, refer to the [Assumptions and defaults](https://developers.lokalise.com/docs/github-actions#assumptions-and-defaults) section.
 
@@ -88,8 +98,12 @@ By default, the following command-line parameters are set when uploading files t
 - `--include-path`
 - `--distinguish-by-file`
 - `--poll`
-- `--poll-timeout` — Set to `120s`.
+- `--poll-timeout` — Derived from the `upload_poll_timeout` parameter.
 - `--tag-inserted-keys`
 - `--tag-skipped-keys=true`
 - `--tag-updated-keys`
 - `--tags` — Set to the branch name that triggered the workflow.
+
+## License
+
+Apache license version 2
