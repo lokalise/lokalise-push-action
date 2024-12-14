@@ -196,7 +196,8 @@ func getEnvAsInt(key string, defaultVal int) int {
 	}
 	val, err := strconv.Atoi(valStr)
 	if err != nil || val < 1 {
-		returnWithError(fmt.Sprintf("Environment variable %s must be a positive integer.", key))
+		fmt.Printf("Invalid or missing value for %s, using default: %d\n", key, defaultVal)
+		return defaultVal
 	}
 	return val
 }

@@ -43,8 +43,14 @@ func validateEnvironment() ([]string, string, string) {
 	baseLang := os.Getenv("BASE_LANG")
 	fileFormat := os.Getenv("FILE_FORMAT")
 
-	if len(translationsPaths) == 0 || baseLang == "" || fileFormat == "" {
-		returnWithError("missing required environment variables")
+	if len(translationsPaths) == 0 {
+		returnWithError("TRANSLATIONS_PATH is not set or is empty")
+	}
+	if baseLang == "" {
+		returnWithError("BASE_LANG is not set or is empty")
+	}
+	if fileFormat == "" {
+		returnWithError("FILE_FORMAT is not set or is empty")
 	}
 
 	return translationsPaths, baseLang, fileFormat
@@ -107,17 +113,17 @@ func findAllTranslationFiles(paths []string, flatNaming bool, baseLang, fileForm
 			targetDir := filepath.Join(path, baseLang)
 			if info, err := os.Stat(targetDir); err == nil && info.IsDir() {
 				// Walk through the directory recursively to find all translation files
-				err := filepath.Walk(targetDir, func(filePath string, info os.FileInfo, err error) error {
+				err := filepath.WalkDir(targetDir, func(filePath string, d os.DirEntry, err error) error {
 					if err != nil {
 						return fmt.Errorf("error walking through directory %s: %v", targetDir, err)
 					}
-					if !info.IsDir() && strings.HasSuffix(info.Name(), fmt.Sprintf(".%s", fileFormat)) {
+					if !d.IsDir() && strings.HasSuffix(d.Name(), fmt.Sprintf(".%s", fileFormat)) {
 						allFiles = append(allFiles, filePath)
 					}
 					return nil
 				})
 				if err != nil {
-					return nil, err // Return error encountered during file walk
+					return nil, err
 				}
 			} else if err != nil {
 				if !os.IsNotExist(err) {

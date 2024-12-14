@@ -14,14 +14,44 @@ import (
 // This can be overridden in tests to capture exit behavior.
 var exitFunc = os.Exit
 
+func main() {
+	// Validate and parse environment variables
+	translationsPaths, baseLang, fileFormat := validateEnvironment()
+
+	// Parse flat naming
+	flatNaming := parseFlatNaming(os.Getenv("FLAT_NAMING"))
+
+	// Open the output file
+	file, err := os.Create("lok_action_paths_temp.txt")
+	if err != nil {
+		returnWithError(fmt.Sprintf("cannot create output file: %v", err))
+	}
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close file properly: %v\n", cerr)
+		}
+	}()
+
+	// Generate and store the translation paths
+	if err := storeTranslationPaths(translationsPaths, flatNaming, baseLang, fileFormat, file); err != nil {
+		returnWithError(fmt.Sprintf("cannot store translation paths: %v", err))
+	}
+}
+
 // validateEnvironment checks and retrieves the necessary environment variables.
 func validateEnvironment() ([]string, string, string) {
 	translationsPaths := parsepaths.ParsePaths(os.Getenv("TRANSLATIONS_PATH"))
 	baseLang := os.Getenv("BASE_LANG")
 	fileFormat := os.Getenv("FILE_FORMAT")
 
-	if len(translationsPaths) == 0 || baseLang == "" || fileFormat == "" {
-		returnWithError("missing required environment variables")
+	if len(translationsPaths) == 0 {
+		returnWithError("TRANSLATIONS_PATH is not set or is empty")
+	}
+	if baseLang == "" {
+		returnWithError("BASE_LANG is not set or is empty")
+	}
+	if fileFormat == "" {
+		returnWithError("FILE_FORMAT is not set or is empty")
 	}
 
 	return translationsPaths, baseLang, fileFormat
@@ -67,26 +97,6 @@ func storeTranslationPaths(paths []string, flatNaming bool, baseLang, fileFormat
 	}
 
 	return nil
-}
-
-func main() {
-	// Validate and parse environment variables
-	translationsPaths, baseLang, fileFormat := validateEnvironment()
-
-	// Parse flat naming
-	flatNaming := parseFlatNaming(os.Getenv("FLAT_NAMING"))
-
-	// Open the output file
-	file, err := os.Create("lok_action_paths_temp.txt")
-	if err != nil {
-		returnWithError(fmt.Sprintf("cannot create output file: %v", err))
-	}
-	defer file.Close()
-
-	// Generate and store the translation paths
-	if err := storeTranslationPaths(translationsPaths, flatNaming, baseLang, fileFormat, file); err != nil {
-		returnWithError(fmt.Sprintf("cannot store translation paths: %v", err))
-	}
 }
 
 func returnWithError(message string) {
