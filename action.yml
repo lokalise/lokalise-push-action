@@ -26,6 +26,10 @@ inputs:
     description: 'Additional parameters for Lokalise CLI on push. Find all supported options at https://github.com/lokalise/lokalise-cli-2-go/blob/main/docs/lokalise2_file_upload.md'
     required: false
     default: ''
+  flat_naming:
+    description: 'Use flat naming convention (true/false). If true, expects files like locales/en.json instead of locales/en/file.json'
+    required: false
+    default: false
   max_retries:
     description: 'Maximum number of retries on rate limit errors'
     required: false
@@ -34,10 +38,14 @@ inputs:
     description: 'Number of seconds to sleep before retrying'
     required: false
     default: 1
-  flat_naming:
-    description: 'Use flat naming convention (true/false). If true, expects files like locales/en.json instead of locales/en/file.json'
+  upload_timeout:
+    description: 'Timeout for the upload operation (in seconds)'
     required: false
-    default: false
+    default: 120
+  upload_poll_timeout:
+    description: 'Timeout for the upload poll operation (in seconds)'
+    required: false
+    default: 120
 permissions:
   contents: write
 branding:
@@ -57,17 +65,19 @@ runs:
         FILE_FORMAT: "${{ inputs.file_format }}"
       run: |
         set -e
-        chmod +x "${{ github.action_path }}/src/scripts/translation_paths.sh"
         
-        . "${{ github.action_path }}/src/scripts/translation_paths.sh"
-        
-        store_translation_paths
+        CMD_PATH="${{ github.action_path }}/bin/store_translation_paths"
+        chmod +x "$CMD_PATH"
+        $("$CMD_PATH") || {
+          echo "Error: store_translation_paths script failed with exit code $?"
+          exit 1
+        }
 
     - name: Get changed files
       id: changed-files
       uses: tj-actions/changed-files@v45
       with:
-        files_from_source_file: paths.txt
+        files_from_source_file: lok_action_paths_temp.txt
         separator: ','
 
     - name: Check if this is the first run on the branch
@@ -94,52 +104,47 @@ runs:
         FLAT_NAMING: "${{ inputs.flat_naming }}"
       run: |
         set -e
-        chmod +x "${{ github.action_path }}/src/scripts/translation_paths.sh"
+        
+        CMD_PATH="${{ github.action_path }}/bin/find_all_files"
+        chmod +x "$CMD_PATH"
+        $("$CMD_PATH") || {
+          echo "Error: find_all_files script failed with exit code $?"
+          exit 1
+        }
 
-        . "${{ github.action_path }}/src/scripts/translation_paths.sh"
-
-        if find_all_translation_files; then
-          echo "Translation files found and set."
-          echo "has_files=true" >> $GITHUB_OUTPUT
-        else
-          echo "No translation files found."
-          echo "has_files=false" >> $GITHUB_OUTPUT
-        fi
-
-    - name: Install Lokalise CLI
+    - name: Install Lokalise CLIv2
       if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
-      shell: bash
-      run: |
-        set -e
-        chmod +x "${{ github.action_path }}/src/scripts/install_lokalise_cli.sh"
-        "${{ github.action_path }}/src/scripts/install_lokalise_cli.sh"
+      uses: bodrovis/install-lokalise-cli-v2@v1.0.2
 
     - name: Push translation files to Lokalise
       if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
       shell: bash
       env:
+        BASE_LANG: ${{ inputs.base_lang }}
         CLI_ADD_PARAMS: ${{ inputs.additional_params }}
         MAX_RETRIES: ${{ inputs.max_retries }}
         SLEEP_TIME: ${{ inputs.sleep_on_retry }}
-        BASE_LANG: ${{ inputs.base_lang }}
+        UPLOAD_TIMEOUT: ${{ inputs.upload_timeout }}
+        UPLOAD_POLL_TIMEOUT: ${{ inputs.upload_poll_timeout }}
       run: |
         set -e
 
         if [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ]; then
-          ALL_FILES="${{ steps.find-files.outputs.ALL_FILES }}"
+          FILES="${{ steps.find-files.outputs.ALL_FILES }}"
         else
-          ALL_CHANGED_FILES="${{ steps.changed-files.outputs.all_changed_files }}"
+          FILES="${{ steps.changed-files.outputs.all_changed_files }}"
         fi
 
-        if [ -z "${ALL_FILES}" ] && [ -z "${ALL_CHANGED_FILES}" ]; then
+        if [ -z "$FILES" ]; then
           echo "No files to upload."
-          exit 0
+          exit 1
         fi
-        
-        chmod +x "${{ github.action_path }}/src/scripts/lokalise_upload.sh"
+
+        CMD_PATH="${{ github.action_path }}/bin/lokalise_upload"
+        chmod +x "$CMD_PATH"
 
         set +e
-        echo "${ALL_FILES:-$ALL_CHANGED_FILES}" | tr ',' '\n' | xargs -P 6 -I {} bash "${{ github.action_path }}/src/scripts/lokalise_upload.sh" "{}" "${{ inputs.project_id }}" "${{ inputs.api_token }}"
+        echo "$FILES" | tr ',' '\n' | xargs -P 6 -I {} "$CMD_PATH" "{}" "${{ inputs.project_id }}" "${{ inputs.api_token }}"
         xargs_exit_code=$?
         set -e
 
