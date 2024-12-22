@@ -146,7 +146,8 @@ runs:
       run: |
         set -e
 
-        if [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ]; then
+        if [ "${{ inputs.rambo_mode }}" == "true" ] || \
+          ( [ "${{ steps.changed-files.outputs.any_changed }}" == "false" ] && [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ] ); then
           FILES="${{ steps.find-files.outputs.ALL_FILES }}"
         else
           FILES="${{ steps.changed-files.outputs.all_changed_files }}"
