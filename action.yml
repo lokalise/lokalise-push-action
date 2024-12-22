@@ -51,6 +51,13 @@ permissions:
 branding:
   icon: 'upload-cloud'
   color: 'green'
+outputs:
+  initial_run:
+    description: 'A boolean value indicating whether this is the initial run on the branch.'
+    value: ${{ steps.check-first-run.outputs.first_run }}
+  files_uploaded:
+    description: 'A boolean value indicating whether any files were uploaded to Lokalise.'
+    value: ${{ steps.push-files.outputs.files_uploaded }}
 
 runs:
   using: "composite"
@@ -136,6 +143,7 @@ runs:
         fi
 
         if [ -z "$FILES" ]; then
+          echo "files_uploaded=false" >> $GITHUB_OUTPUT
           echo "No files to upload."
           exit 1
         fi
@@ -149,9 +157,12 @@ runs:
         set -e
 
         if [ $xargs_exit_code -ne 0 ]; then
+          echo "files_uploaded=false" >> $GITHUB_OUTPUT
           echo "File upload failed"
           exit 1
         fi
+
+        echo "files_uploaded=true" >> $GITHUB_OUTPUT
 
     - name: Mark Lokalise upload as complete
       if: steps.check-first-run.outputs.first_run == 'true'
