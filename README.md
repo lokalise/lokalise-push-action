@@ -61,6 +61,13 @@ You'll need to provide some parameters for the action. These can be set as envir
 
 ## Technical details
 
+### Outputs
+
+This action outputs the following values:
+
+- `initial_run` — Indicates whether this is the first run on the branch. The value is `true` if the `lokalise-upload-complete` tag does not exist, otherwise `false`.
+- `files_uploaded` — Indicates whether any files were uploaded to Lokalise. The value is `true` if files were successfully uploaded, otherwise `false` (e.g., no changes or upload step skipped).
+
 ### How this action works
 
 When triggered, this action follows a multi-step process to detect changes in translation files and upload them to Lokalise:

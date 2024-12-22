@@ -5,9 +5,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 
-	"github.com/bodrovis/lokalise-actions-common/parsepaths"
+	"github.com/bodrovis/lokalise-actions-common/v2/parsers"
 )
 
 // exitFunc is a function variable that defaults to os.Exit.
@@ -19,7 +18,10 @@ func main() {
 	translationsPaths, baseLang, fileFormat := validateEnvironment()
 
 	// Parse flat naming
-	flatNaming := parseFlatNaming(os.Getenv("FLAT_NAMING"))
+	flatNaming, err := parsers.ParseBoolEnv(os.Getenv("FLAT_NAMING"))
+	if err != nil {
+		returnWithError("invalid value for FLAT_NAMING environment variable; expected true or false")
+	}
 
 	// Open the output file
 	file, err := os.Create("lok_action_paths_temp.txt")
@@ -40,7 +42,7 @@ func main() {
 
 // validateEnvironment checks and retrieves the necessary environment variables.
 func validateEnvironment() ([]string, string, string) {
-	translationsPaths := parsepaths.ParsePaths(os.Getenv("TRANSLATIONS_PATH"))
+	translationsPaths := parsers.ParseStringArrayEnv("TRANSLATIONS_PATH")
 	baseLang := os.Getenv("BASE_LANG")
 	fileFormat := os.Getenv("FILE_FORMAT")
 
@@ -55,20 +57,6 @@ func validateEnvironment() ([]string, string, string) {
 	}
 
 	return translationsPaths, baseLang, fileFormat
-}
-
-// parseFlatNaming parses the FLAT_NAMING environment variable as a boolean.
-func parseFlatNaming(flatNamingEnv string) bool {
-	if flatNamingEnv == "" {
-		return false
-	}
-
-	flatNaming, err := strconv.ParseBool(flatNamingEnv)
-	if err != nil {
-		returnWithError("invalid value for FLAT_NAMING environment variable; expected true or false")
-	}
-
-	return flatNaming
 }
 
 // storeTranslationPaths generates paths and writes them to paths.txt based on environment variables.
