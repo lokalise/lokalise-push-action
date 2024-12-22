@@ -192,7 +192,7 @@ runs:
       id: check-files-upload
       shell: bash
       run: |
-        if [ "${{ steps.push-files.outputs.files_uploaded }}" != "true" ]; then
+        if [ "${{ steps.push-translation-files.outputs.files_uploaded }}" != "true" ]; then
           echo "files_uploaded=false" >> $GITHUB_OUTPUT
         else
           echo "files_uploaded=true" >> $GITHUB_OUTPUT
