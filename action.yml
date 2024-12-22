@@ -57,17 +57,11 @@ outputs:
     value: ${{ steps.check-first-run.outputs.first_run }}
   files_uploaded:
     description: 'A boolean value indicating whether any files were uploaded to Lokalise.'
-    value: ${{ steps.push-files.outputs.files_uploaded }}
+    value: ${{ steps.check-files-upload.outputs.files_uploaded }}
 
 runs:
   using: "composite"
   steps:
-    - name: Set default outputs
-      shell: bash
-      run: |
-        echo "files_uploaded=false" >> $GITHUB_OUTPUT
-        echo "first_run=false" >> $GITHUB_OUTPUT
-
     - name: Set translation paths
       id: translation-paths
       shell: bash
@@ -94,13 +88,14 @@ runs:
         separator: ','
 
     - name: Check if this is the first run on the branch
-      if: steps.changed-files.outputs.any_changed == 'false'
       id: check-first-run
       shell: bash
       run: |
         set -e
 
-        if ! git rev-parse "refs/tags/lokalise-upload-complete" >/dev/null 2>&1; then
+        if git rev-parse "refs/tags/lokalise-upload-complete" >/dev/null 2>&1; then
+          echo "first_run=false" >> $GITHUB_OUTPUT
+        else
           echo "first_run=true" >> $GITHUB_OUTPUT
         fi
 
@@ -179,4 +174,13 @@ runs:
           git push origin "lokalise-upload-complete"
         else
           echo "Tag 'lokalise-upload-complete' already exists."
+        fi
+
+    - name: Verify file upload success
+      id: check-files-upload
+      run: |
+        if [ "${{ steps.push-files.outputs.files_uploaded }}" != "true" ]; then
+          echo "files_uploaded=false" >> $GITHUB_OUTPUT
+        else
+          echo "files_uploaded=true" >> $GITHUB_OUTPUT
         fi
