@@ -18,7 +18,7 @@ func main() {
 	translationsPaths, baseLang, fileFormat := validateEnvironment()
 
 	// Parse flat naming
-	flatNaming, err := parsers.ParseBoolEnv(os.Getenv("FLAT_NAMING"))
+	flatNaming, err := parsers.ParseBoolEnv("FLAT_NAMING")
 	if err != nil {
 		returnWithError("invalid value for FLAT_NAMING environment variable; expected true or false")
 	}
