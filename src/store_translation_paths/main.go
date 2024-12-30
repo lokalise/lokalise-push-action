@@ -68,10 +68,14 @@ func storeTranslationPaths(paths []string, flatNaming bool, baseLang, fileFormat
 			continue // Skip empty paths.
 		}
 
+		fmt.Println(namePattern)
+		fmt.Println(flatNaming)
+
 		var formattedPath string
 		if namePattern != "" {
 			// Use the custom name pattern provided by the user.
 			formattedPath = filepath.Join(".", path, namePattern)
+			fmt.Println("name pattern present")
 		} else if flatNaming {
 			// For flat naming, construct the path to the base language file.
 			// Example: "./path/to/translations/en.json"
@@ -81,6 +85,8 @@ func storeTranslationPaths(paths []string, flatNaming bool, baseLang, fileFormat
 			// Example: "./path/to/translations/en/**/*.json"
 			formattedPath = filepath.Join(".", path, baseLang, "**", fmt.Sprintf("*.%s", fileFormat))
 		}
+
+		fmt.Println(formattedPath)
 
 		if _, err := writer.Write([]byte(formattedPath + "\n")); err != nil {
 			return err
