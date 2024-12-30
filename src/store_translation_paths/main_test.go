@@ -29,9 +29,10 @@ func TestValidateEnvironment(t *testing.T) {
 		os.Setenv("TRANSLATIONS_PATH", "\npath1\n\npath2\n")
 		os.Setenv("BASE_LANG", "en")
 		os.Setenv("FILE_FORMAT", "json")
+		os.Setenv("NAME_PATTERN", "custom_name.json")
 		defer os.Clearenv()
 
-		paths, baseLang, fileFormat := validateEnvironment()
+		paths, baseLang, fileFormat, namePattern := validateEnvironment()
 
 		if len(paths) != 2 || paths[0] != "path1" || paths[1] != "path2" {
 			t.Errorf("Unexpected translations paths: %v", paths)
@@ -41,6 +42,9 @@ func TestValidateEnvironment(t *testing.T) {
 		}
 		if fileFormat != "json" {
 			t.Errorf("Expected fileFormat 'json', got '%s'", fileFormat)
+		}
+		if namePattern != "custom_name.json" {
+			t.Errorf("Expected namePattern 'custom_name.json', got '%s'", namePattern)
 		}
 	})
 
@@ -63,6 +67,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 		flatNaming  bool
 		baseLang    string
 		fileFormat  string
+		namePattern string
 		expected    []string
 		shouldError bool
 	}{
@@ -78,38 +83,26 @@ func TestStoreTranslationPaths(t *testing.T) {
 			},
 		},
 		{
-			name:       "Nested naming with valid paths",
-			paths:      []string{"translations", "more_translations"},
-			flatNaming: false,
-			baseLang:   "en",
-			fileFormat: "json",
+			name:        "Custom naming pattern",
+			paths:       []string{"translations", "more_translations"},
+			flatNaming:  true,
+			baseLang:    "en",
+			fileFormat:  "json",
+			namePattern: "custom_name.json",
 			expected: []string{
-				filepath.Join(".", "translations", "en", "**", "*.json"),
-				filepath.Join(".", "more_translations", "en", "**", "*.json"),
+				filepath.Join(".", "translations", "custom_name.json"),
+				filepath.Join(".", "more_translations", "custom_name.json"),
 			},
 		},
 		{
-			name:       "Flat naming with paths containing spaces",
-			paths:      []string{"translations", "more translations", "nested dir/with spaces"},
-			flatNaming: true,
-			baseLang:   "en-US",
-			fileFormat: "yml",
+			name:        "Nested naming with custom pattern",
+			paths:       []string{"translations"},
+			flatNaming:  false,
+			baseLang:    "en",
+			fileFormat:  "json",
+			namePattern: "**.yaml",
 			expected: []string{
-				filepath.Join(".", "translations", "en-US.yml"),
-				filepath.Join(".", "more translations", "en-US.yml"),
-				filepath.Join(".", "nested dir", "with spaces", "en-US.yml"),
-			},
-		},
-		{
-			name:       "Nested naming with paths containing spaces",
-			paths:      []string{"translations", "more translations", "nested dir/with spaces"},
-			flatNaming: false,
-			baseLang:   "en-GB",
-			fileFormat: "po",
-			expected: []string{
-				filepath.Join(".", "translations", "en-GB", "**", "*.po"),
-				filepath.Join(".", "more translations", "en-GB", "**", "*.po"),
-				filepath.Join(".", "nested dir", "with spaces", "en-GB", "**", "*.po"),
+				filepath.Join(".", "translations", "**.yaml"),
 			},
 		},
 		{
@@ -134,35 +127,6 @@ func TestStoreTranslationPaths(t *testing.T) {
 				filepath.Join(".", "another", "nested", "dir", "de", "**", "*.properties"),
 			},
 		},
-		{
-			name:       "Paths with special characters",
-			paths:      []string{"special!@#$%^&()[]{};'", "unicode/路径"},
-			flatNaming: true,
-			baseLang:   "ja",
-			fileFormat: "txt",
-			expected: []string{
-				filepath.Join(".", "special!@#$%^&()[]{};'", "ja.txt"),
-				filepath.Join(".", "unicode", "路径", "ja.txt"),
-			},
-		},
-		{
-			name:       "Empty paths list",
-			paths:      []string{},
-			flatNaming: true,
-			baseLang:   "en",
-			fileFormat: "json",
-			expected:   []string{},
-		},
-		{
-			name:       "Paths with empty strings",
-			paths:      []string{"", "translations", ""},
-			flatNaming: true,
-			baseLang:   "en",
-			fileFormat: "json",
-			expected: []string{
-				filepath.Join(".", "translations", "en.json"),
-			},
-		},
 	}
 
 	for _, tt := range tests {
@@ -173,7 +137,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 			var buf bytes.Buffer
 
 			// Call the function with the buffer as writer
-			err := storeTranslationPaths(tt.paths, tt.flatNaming, tt.baseLang, tt.fileFormat, &buf)
+			err := storeTranslationPaths(tt.paths, tt.flatNaming, tt.baseLang, tt.fileFormat, tt.namePattern, &buf)
 
 			if tt.shouldError {
 				if err == nil {

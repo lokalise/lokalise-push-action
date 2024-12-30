@@ -30,6 +30,10 @@ inputs:
     description: 'Use flat naming convention (true/false). If true, expects files like locales/en.json instead of locales/en/file.json'
     required: false
     default: false
+  name_pattern:
+    description: 'Custom pattern for naming translation files. Overrides default language-based naming. Must include both filename and extension if applicable (e.g., "custom_name.json" or "**.yaml"). Default behavior is used if not set.'
+    required: false
+    default: ''
   skip_tagging:
     description: 'Do not assign tags to the uploaded translation keys on Lokalise'
     required: false
@@ -78,6 +82,7 @@ runs:
         FLAT_NAMING: "${{ inputs.flat_naming }}"
         BASE_LANG: "${{ inputs.base_lang }}"
         FILE_FORMAT: "${{ inputs.file_format }}"
+        NAME_PATTERN: "${{ inputs.name_pattern }}"
       run: |
         set -e
         
@@ -117,6 +122,7 @@ runs:
         BASE_LANG: "${{ inputs.base_lang }}"
         FILE_FORMAT: "${{ inputs.file_format }}"
         FLAT_NAMING: "${{ inputs.flat_naming }}"
+        NAME_PATTERN: "${{ inputs.name_pattern }}"
       run: |
         set -e
         
