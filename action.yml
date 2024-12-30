@@ -85,7 +85,7 @@ runs:
         NAME_PATTERN: "${{ inputs.name_pattern }}"
       run: |
         set -e
-        echo "FLAT_NAMING value in shell: $FLAT_NAMING"
+
         CMD_PATH="${{ github.action_path }}/bin/store_translation_paths"
         chmod +x "$CMD_PATH"
         $("$CMD_PATH") || {

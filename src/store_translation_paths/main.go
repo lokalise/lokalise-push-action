@@ -17,15 +17,11 @@ func main() {
 	// Validate and parse environment variables
 	translationsPaths, baseLang, fileFormat, namePattern := validateEnvironment()
 
-	rawFlatNaming := os.Getenv("FLAT_NAMING")
-	fmt.Fprintln(os.Stderr, "Debug: raw FLAT_NAMING =", rawFlatNaming)
-
 	// Parse flat naming
 	flatNaming, err := parsers.ParseBoolEnv("FLAT_NAMING")
 	if err != nil {
 		returnWithError("invalid value for FLAT_NAMING environment variable; expected true or false")
 	}
-	fmt.Fprintln(os.Stderr, "Debug: parsed FLAT_NAMING =", flatNaming)
 
 	// Open the output file
 	file, err := os.Create("lok_action_paths_temp.txt")
@@ -72,22 +68,16 @@ func storeTranslationPaths(paths []string, flatNaming bool, baseLang, fileFormat
 			continue // Skip empty paths.
 		}
 
-		fmt.Fprintln(os.Stderr, "Debug: namePattern =", namePattern)
-		fmt.Fprintln(os.Stderr, "Debug: flatNaming =", flatNaming)
-
 		var formattedPath string
 		if namePattern != "" {
 			// Use the custom name pattern provided by the user.
 			formattedPath = filepath.Join(".", path, namePattern)
-			fmt.Fprintln(os.Stderr, "Debug: name pattern present, formattedPath =", formattedPath)
 		} else if flatNaming {
 			// For flat naming, construct the path to the base language file.
 			formattedPath = filepath.Join(".", path, fmt.Sprintf("%s.%s", baseLang, fileFormat))
-			fmt.Fprintln(os.Stderr, "Debug: flat naming, formattedPath =", formattedPath)
 		} else {
 			// For nested directories, construct a glob pattern to match all files in the base language directory.
 			formattedPath = filepath.Join(".", path, baseLang, "**", fmt.Sprintf("*.%s", fileFormat))
-			fmt.Fprintln(os.Stderr, "Debug: nested naming, formattedPath =", formattedPath)
 		}
 
 		if _, err := writer.Write([]byte(formattedPath + "\n")); err != nil {
