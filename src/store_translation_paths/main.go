@@ -17,11 +17,15 @@ func main() {
 	// Validate and parse environment variables
 	translationsPaths, baseLang, fileFormat, namePattern := validateEnvironment()
 
+	rawFlatNaming := os.Getenv("FLAT_NAMING")
+	fmt.Fprintln(os.Stderr, "Debug: raw FLAT_NAMING =", rawFlatNaming)
+
 	// Parse flat naming
 	flatNaming, err := parsers.ParseBoolEnv(os.Getenv("FLAT_NAMING"))
 	if err != nil {
 		returnWithError("invalid value for FLAT_NAMING environment variable; expected true or false")
 	}
+	fmt.Fprintln(os.Stderr, "Debug: parsed FLAT_NAMING =", flatNaming)
 
 	// Open the output file
 	file, err := os.Create("lok_action_paths_temp.txt")
