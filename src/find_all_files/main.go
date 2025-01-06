@@ -87,11 +87,15 @@ func findAllTranslationFiles(paths []string, flatNaming bool, baseLang, fileForm
 		}
 
 		if namePattern != "" {
-			// Use the custom name pattern provided by the user
+			fmt.Fprintf(os.Stderr, "DEBUG: Applying namePattern: %s to path: %s\n", namePattern, path)
+
 			matches, err := filepath.Glob(filepath.Join(path, namePattern))
 			if err != nil {
 				return nil, fmt.Errorf("error applying name pattern %s: %v", namePattern, err)
 			}
+
+			fmt.Fprintf(os.Stderr, "DEBUG: Matched files: %v\n", matches)
+
 			allFiles = append(allFiles, matches...)
 		} else if flatNaming {
 			// For flat naming, look for a single translation file named as baseLang.fileFormat in the path
