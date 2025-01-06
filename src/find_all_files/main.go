@@ -89,8 +89,6 @@ func findAllTranslationFiles(paths []string, flatNaming bool, baseLang, fileForm
 		}
 
 		if namePattern != "" {
-			fmt.Fprintf(os.Stderr, "DEBUG: Applying namePattern: %s to path: %s\n", namePattern, path)
-
 			// Convert to forward slashes and ensure the pattern is relative to the project root
 			pattern := filepath.ToSlash(filepath.Join(path, namePattern))
 
@@ -101,8 +99,6 @@ func findAllTranslationFiles(paths []string, flatNaming bool, baseLang, fileForm
 			}
 
 			allFiles = append(allFiles, matches...)
-
-			fmt.Fprintf(os.Stderr, "DEBUG: Matched files: %v\n", matches)
 		} else if flatNaming {
 			// For flat naming, look for a single translation file named as baseLang.fileFormat in the path
 			targetFile := filepath.Join(path, fmt.Sprintf("%s.%s", baseLang, fileFormat))

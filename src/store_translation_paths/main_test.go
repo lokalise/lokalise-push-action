@@ -127,6 +127,28 @@ func TestStoreTranslationPaths(t *testing.T) {
 				filepath.Join(".", "another", "nested", "dir", "de", "**", "*.properties"),
 			},
 		},
+
+		{
+			name:       "Root path (.) with flat naming",
+			paths:      []string{"."},
+			flatNaming: true,
+			baseLang:   "en",
+			fileFormat: "json",
+			expected: []string{
+				filepath.Join(".", ".", "en.json"), // normalizes to ././en.json, effectively ./en.json
+			},
+		},
+		{
+			name:        "Root path (.) with custom name pattern",
+			paths:       []string{"."},
+			flatNaming:  false,
+			baseLang:    "en",
+			fileFormat:  "json",
+			namePattern: "some_dir/**.yaml",
+			expected: []string{
+				filepath.Join(".", ".", "some_dir", "**.yaml"), // e.g. ././some_dir/**.yaml
+			},
+		},
 	}
 
 	for _, tt := range tests {
