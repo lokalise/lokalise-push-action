@@ -24,7 +24,7 @@ jobs:
           fetch-depth: 0
 
       - name: Push to Lokalise
-        uses: lokalise/lokalise-push-action@v3.0.0
+        uses: lokalise/lokalise-push-action@v3.1.1
         with:
           api_token: ${{ secrets.LOKALISE_API_TOKEN }}
           project_id: LOKALISE_PROJECT_ID
@@ -87,7 +87,7 @@ When triggered, this action follows a multi-step process to detect changes in tr
 3. **Handle initial push**:
    - If no changes are detected between the last two commits, the action determines if it is running for the first time on the branch:
      - **First run**: The action checks for the presence of a `lokalise-upload-complete` tag.
-       - If the tag is **not found**, it performs an initial upload, processing all translation files for the base language.
+       - If the tag is **not found**, it performs an initial upload, processing all translation files for the base language. This also happens when the `rambo_mode` is set to `true`.
        - After successfully uploading all files, the action creates a `lokalise-upload-complete` tag to mark the initial setup as complete.
      - **Subsequent runs**: If the tag is found, the action exits without uploading any files, as the initial push has already been completed.
 
@@ -111,7 +111,7 @@ By default, the following command-line parameters are set when uploading files t
 - `--poll`
 - `--poll-timeout` — Derived from the `upload_poll_timeout` parameter.
 - `--tag-inserted-keys`
-- `--tag-skipped-keys=true`
+- `--tag-skipped-keys`
 - `--tag-updated-keys`
 - `--tags` — Set to the branch name that triggered the workflow.
 
