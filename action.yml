@@ -30,6 +30,14 @@ inputs:
     description: 'Use flat naming convention (true/false). If true, expects files like locales/en.json instead of locales/en/file.json'
     required: false
     default: false
+  skip_tagging:
+    description: 'Do not assign tags to the uploaded translation keys on Lokalise'
+    required: false
+    default: false
+  rambo_mode:
+    description: 'Always upload all translation files for the base language regardless of changes'
+    required: false
+    default: false
   max_retries:
     description: 'Maximum number of retries on rate limit errors'
     required: false
@@ -51,6 +59,13 @@ permissions:
 branding:
   icon: 'upload-cloud'
   color: 'green'
+outputs:
+  initial_run:
+    description: 'A boolean value indicating whether this is the initial run on the branch.'
+    value: ${{ steps.check-first-run.outputs.first_run }}
+  files_uploaded:
+    description: 'A boolean value indicating whether any files were uploaded to Lokalise.'
+    value: ${{ steps.check-files-upload.outputs.files_uploaded }}
 
 runs:
   using: "composite"
@@ -74,6 +89,7 @@ runs:
         }
 
     - name: Get changed files
+      if: inputs.rambo_mode != 'true'
       id: changed-files
       uses: tj-actions/changed-files@v45
       with:
@@ -81,7 +97,6 @@ runs:
         separator: ','
 
     - name: Check if this is the first run on the branch
-      if: steps.changed-files.outputs.any_changed == 'false'
       id: check-first-run
       shell: bash
       run: |
@@ -94,7 +109,7 @@ runs:
         fi
 
     - name: Find all translation files
-      if: steps.changed-files.outputs.any_changed == 'false' && steps.check-first-run.outputs.first_run == 'true'
+      if: inputs.rambo_mode == 'true' || (steps.changed-files.outputs.any_changed == 'false' && steps.check-first-run.outputs.first_run == 'true')
       id: find-files
       shell: bash
       env:
@@ -118,6 +133,7 @@ runs:
 
     - name: Push translation files to Lokalise
       if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
+      id: push-translation-files
       shell: bash
       env:
         BASE_LANG: ${{ inputs.base_lang }}
@@ -126,10 +142,12 @@ runs:
         SLEEP_TIME: ${{ inputs.sleep_on_retry }}
         UPLOAD_TIMEOUT: ${{ inputs.upload_timeout }}
         UPLOAD_POLL_TIMEOUT: ${{ inputs.upload_poll_timeout }}
+        SKIP_TAGGING: ${{ inputs.skip_tagging }}
       run: |
         set -e
 
-        if [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ]; then
+        if [ "${{ inputs.rambo_mode }}" == "true" ] || \
+          ( [ "${{ steps.changed-files.outputs.any_changed }}" == "false" ] && [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ] ); then
           FILES="${{ steps.find-files.outputs.ALL_FILES }}"
         else
           FILES="${{ steps.changed-files.outputs.all_changed_files }}"
@@ -153,6 +171,8 @@ runs:
           exit 1
         fi
 
+        echo "files_uploaded=true" >> $GITHUB_OUTPUT
+
     - name: Mark Lokalise upload as complete
       if: steps.check-first-run.outputs.first_run == 'true'
       shell: bash
@@ -166,4 +186,14 @@ runs:
           git push origin "lokalise-upload-complete"
         else
           echo "Tag 'lokalise-upload-complete' already exists."
+        fi
+
+    - name: Verify file upload success
+      id: check-files-upload
+      shell: bash
+      run: |
+        if [ "${{ steps.push-translation-files.outputs.files_uploaded }}" != "true" ]; then
+          echo "files_uploaded=false" >> $GITHUB_OUTPUT
+        else
+          echo "files_uploaded=true" >> $GITHUB_OUTPUT
         fi

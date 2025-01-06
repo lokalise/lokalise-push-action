@@ -7,9 +7,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/bodrovis/lokalise-actions-common/v2/parsers"
 )
 
 // exitFunc is a function variable that defaults to os.Exit.
@@ -33,6 +34,7 @@ type UploadConfig struct {
 	LangISO          string
 	GitHubRefName    string
 	AdditionalParams string
+	SkipTagging      bool
 	MaxRetries       int
 	SleepTime        int
 	PollTimeout      int
@@ -45,6 +47,11 @@ func main() {
 		returnWithError("Usage: lokalise_upload <file> <project_id> <token>")
 	}
 
+	skipTagging, err := parsers.ParseBoolEnv("SKIP_TAGGING")
+	if err != nil {
+		returnWithError("Invalid value for the skip_tagging parameter.")
+	}
+
 	// Create the configuration struct
 	config := UploadConfig{
 		FilePath:         os.Args[1],
@@ -53,10 +60,11 @@ func main() {
 		LangISO:          os.Getenv("BASE_LANG"),
 		GitHubRefName:    os.Getenv("GITHUB_REF_NAME"),
 		AdditionalParams: os.Getenv("CLI_ADD_PARAMS"),
-		MaxRetries:       getEnvAsInt("MAX_RETRIES", defaultMaxRetries),
-		SleepTime:        getEnvAsInt("SLEEP_TIME", defaultSleepTime),
-		PollTimeout:      getEnvAsInt("UPLOAD_POLL_TIMEOUT", defaultPollTimeout),
-		UploadTimeout:    getEnvAsInt("UPLOAD_TIMEOUT", defaultUploadTimeout),
+		SkipTagging:      skipTagging,
+		MaxRetries:       parsers.ParseUintEnv("MAX_RETRIES", defaultMaxRetries),
+		SleepTime:        parsers.ParseUintEnv("SLEEP_TIME", defaultSleepTime),
+		PollTimeout:      parsers.ParseUintEnv("UPLOAD_POLL_TIMEOUT", defaultPollTimeout),
+		UploadTimeout:    parsers.ParseUintEnv("UPLOAD_TIMEOUT", defaultUploadTimeout),
 	}
 
 	validate(config)
@@ -172,10 +180,10 @@ func constructArgs(config UploadConfig) []string {
 		"--distinguish-by-file",
 		"--poll",
 		fmt.Sprintf("--poll-timeout=%ds", config.PollTimeout),
-		"--tag-inserted-keys",
-		"--tag-skipped-keys=true",
-		"--tag-updated-keys",
-		"--tags", config.GitHubRefName,
+	}
+
+	if !config.SkipTagging {
+		args = append(args, "--tag-inserted-keys", "--tag-skipped-keys", "--tag-updated-keys", "--tags", config.GitHubRefName)
 	}
 
 	// Add additional params from the environment variable
@@ -184,22 +192,6 @@ func constructArgs(config UploadConfig) []string {
 	}
 
 	return args
-}
-
-// getEnvAsInt retrieves an environment variable as an integer.
-// Returns the default value if the variable is not set.
-// Exits with an error if the value is not a positive integer.
-func getEnvAsInt(key string, defaultVal int) int {
-	valStr := os.Getenv(key)
-	if valStr == "" {
-		return defaultVal
-	}
-	val, err := strconv.Atoi(valStr)
-	if err != nil || val < 1 {
-		fmt.Printf("Invalid or missing value for %s, using default: %d\n", key, defaultVal)
-		return defaultVal
-	}
-	return val
 }
 
 // isRateLimitError checks if the error is due to rate limiting (HTTP status code 429).

@@ -56,39 +56,6 @@ func TestValidateEnvironment(t *testing.T) {
 	})
 }
 
-func TestParseFlatNaming(t *testing.T) {
-	t.Run("Valid true value", func(t *testing.T) {
-		result := parseFlatNaming("true")
-		if !result {
-			t.Errorf("Expected true, got false")
-		}
-	})
-
-	t.Run("Valid false value", func(t *testing.T) {
-		result := parseFlatNaming("false")
-		if result {
-			t.Errorf("Expected false, got true")
-		}
-	})
-
-	t.Run("Empty value defaults to false", func(t *testing.T) {
-		result := parseFlatNaming("")
-		if result {
-			t.Errorf("Expected false for empty value, got true")
-		}
-	})
-
-	t.Run("Invalid value causes panic", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Errorf("Expected panic for invalid FLAT_NAMING value")
-			}
-		}()
-
-		parseFlatNaming("invalid")
-	})
-}
-
 func TestStoreTranslationPaths(t *testing.T) {
 	tests := []struct {
 		name        string

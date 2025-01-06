@@ -4,12 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
-	"github.com/bodrovis/lokalise-actions-common/githuboutput"
+	"github.com/bodrovis/lokalise-actions-common/v2/githuboutput"
 
-	"github.com/bodrovis/lokalise-actions-common/parsepaths"
+	"github.com/bodrovis/lokalise-actions-common/v2/parsers"
 )
 
 // This program finds all translation files based on environment configurations.
@@ -25,7 +24,10 @@ func main() {
 	translationsPaths, baseLang, fileFormat := validateEnvironment()
 
 	// Parse flatNaming parameter
-	flatNaming := parseFlatNaming(os.Getenv("FLAT_NAMING"))
+	flatNaming, err := parsers.ParseBoolEnv("FLAT_NAMING")
+	if err != nil {
+		returnWithError("invalid value for FLAT_NAMING environment variable; expected true or false")
+	}
 
 	// Find all translation files based on the provided configurations
 	allFiles, err := findAllTranslationFiles(translationsPaths, flatNaming, baseLang, fileFormat)
@@ -39,7 +41,7 @@ func main() {
 
 // validateEnvironment ensures required environment variables are set and parses initial values.
 func validateEnvironment() ([]string, string, string) {
-	translationsPaths := parsepaths.ParsePaths(os.Getenv("TRANSLATIONS_PATH"))
+	translationsPaths := parsers.ParseStringArrayEnv("TRANSLATIONS_PATH")
 	baseLang := os.Getenv("BASE_LANG")
 	fileFormat := os.Getenv("FILE_FORMAT")
 
@@ -54,20 +56,6 @@ func validateEnvironment() ([]string, string, string) {
 	}
 
 	return translationsPaths, baseLang, fileFormat
-}
-
-// parseFlatNaming parses the `FLAT_NAMING` environment variable as a boolean.
-func parseFlatNaming(flatNamingEnv string) bool {
-	if flatNamingEnv == "" {
-		return false
-	}
-
-	flatNaming, err := strconv.ParseBool(flatNamingEnv)
-	if err != nil {
-		returnWithError("invalid value for FLAT_NAMING environment variable; expected true or false")
-	}
-
-	return flatNaming
 }
 
 // processAllFiles writes the found translation files to GitHub Actions output.
@@ -129,7 +117,6 @@ func findAllTranslationFiles(paths []string, flatNaming bool, baseLang, fileForm
 				if !os.IsNotExist(err) {
 					return nil, fmt.Errorf("error accessing directory %s: %v", targetDir, err)
 				}
-				// Directory does not exist, continue to next path
 			}
 		}
 	}
