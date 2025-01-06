@@ -9,6 +9,8 @@ import (
 	"github.com/bodrovis/lokalise-actions-common/v2/githuboutput"
 
 	"github.com/bodrovis/lokalise-actions-common/v2/parsers"
+
+	"github.com/bmatcuk/doublestar/v4"
 )
 
 // This program finds all translation files based on environment configurations.
@@ -89,14 +91,18 @@ func findAllTranslationFiles(paths []string, flatNaming bool, baseLang, fileForm
 		if namePattern != "" {
 			fmt.Fprintf(os.Stderr, "DEBUG: Applying namePattern: %s to path: %s\n", namePattern, path)
 
-			matches, err := filepath.Glob(filepath.Join(path, namePattern))
+			// Convert to forward slashes and ensure the pattern is relative to the project root
+			pattern := filepath.ToSlash(filepath.Join(path, namePattern))
+
+			// Use doublestar.Glob with the project root as the FS
+			matches, err := doublestar.Glob(os.DirFS("."), pattern)
 			if err != nil {
-				return nil, fmt.Errorf("error applying name pattern %s: %v", namePattern, err)
+				return nil, fmt.Errorf("error applying name pattern %s: %v", pattern, err)
 			}
 
-			fmt.Fprintf(os.Stderr, "DEBUG: Matched files: %v\n", matches)
-
 			allFiles = append(allFiles, matches...)
+
+			fmt.Fprintf(os.Stderr, "DEBUG: Matched files: %v\n", matches)
 		} else if flatNaming {
 			// For flat naming, look for a single translation file named as baseLang.fileFormat in the path
 			targetFile := filepath.Join(path, fmt.Sprintf("%s.%s", baseLang, fileFormat))
