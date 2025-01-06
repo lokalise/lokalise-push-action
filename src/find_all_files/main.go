@@ -21,7 +21,7 @@ var exitFunc = os.Exit
 
 func main() {
 	// Read and validate environment variables
-	translationsPaths, baseLang, fileFormat := validateEnvironment()
+	translationsPaths, baseLang, fileFormat, namePattern := validateEnvironment()
 
 	// Parse flatNaming parameter
 	flatNaming, err := parsers.ParseBoolEnv("FLAT_NAMING")
@@ -30,7 +30,7 @@ func main() {
 	}
 
 	// Find all translation files based on the provided configurations
-	allFiles, err := findAllTranslationFiles(translationsPaths, flatNaming, baseLang, fileFormat)
+	allFiles, err := findAllTranslationFiles(translationsPaths, flatNaming, baseLang, fileFormat, namePattern)
 	if err != nil {
 		returnWithError(fmt.Sprintf("unable to find translation files: %v", err))
 	}
@@ -40,10 +40,11 @@ func main() {
 }
 
 // validateEnvironment ensures required environment variables are set and parses initial values.
-func validateEnvironment() ([]string, string, string) {
+func validateEnvironment() ([]string, string, string, string) {
 	translationsPaths := parsers.ParseStringArrayEnv("TRANSLATIONS_PATH")
 	baseLang := os.Getenv("BASE_LANG")
 	fileFormat := os.Getenv("FILE_FORMAT")
+	namePattern := os.Getenv("NAME_PATTERN")
 
 	if len(translationsPaths) == 0 {
 		returnWithError("TRANSLATIONS_PATH is not set or is empty")
@@ -55,7 +56,7 @@ func validateEnvironment() ([]string, string, string) {
 		returnWithError("FILE_FORMAT is not set or is empty")
 	}
 
-	return translationsPaths, baseLang, fileFormat
+	return translationsPaths, baseLang, fileFormat, namePattern
 }
 
 // processAllFiles writes the found translation files to GitHub Actions output.
@@ -77,7 +78,7 @@ func processAllFiles(allFiles []string, writeOutput func(key, value string) bool
 
 // findAllTranslationFiles searches for translation files based on the given paths and naming conventions.
 // It supports both flat naming (all translations in one file) and nested directories per language.
-func findAllTranslationFiles(paths []string, flatNaming bool, baseLang, fileFormat string) ([]string, error) {
+func findAllTranslationFiles(paths []string, flatNaming bool, baseLang, fileFormat string, namePattern string) ([]string, error) {
 	var allFiles []string
 
 	for _, path := range paths {
@@ -85,7 +86,14 @@ func findAllTranslationFiles(paths []string, flatNaming bool, baseLang, fileForm
 			continue // Skip empty paths
 		}
 
-		if flatNaming {
+		if namePattern != "" {
+			// Use the custom name pattern provided by the user
+			matches, err := filepath.Glob(filepath.Join(path, namePattern))
+			if err != nil {
+				return nil, fmt.Errorf("error applying name pattern %s: %v", namePattern, err)
+			}
+			allFiles = append(allFiles, matches...)
+		} else if flatNaming {
 			// For flat naming, look for a single translation file named as baseLang.fileFormat in the path
 			targetFile := filepath.Join(path, fmt.Sprintf("%s.%s", baseLang, fileFormat))
 			if info, err := os.Stat(targetFile); err == nil && !info.IsDir() {
@@ -94,13 +102,11 @@ func findAllTranslationFiles(paths []string, flatNaming bool, baseLang, fileForm
 				if !os.IsNotExist(err) {
 					return nil, fmt.Errorf("error accessing file %s: %v", targetFile, err)
 				}
-				// File does not exist, continue to next path
 			}
 		} else {
 			// For nested directories, look for a directory named baseLang and search for translation files within it
 			targetDir := filepath.Join(path, baseLang)
 			if info, err := os.Stat(targetDir); err == nil && info.IsDir() {
-				// Walk through the directory recursively to find all translation files
 				err := filepath.WalkDir(targetDir, func(filePath string, d os.DirEntry, err error) error {
 					if err != nil {
 						return fmt.Errorf("error walking through directory %s: %v", targetDir, err)
