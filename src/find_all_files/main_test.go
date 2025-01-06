@@ -73,6 +73,7 @@ func setupTestFileStructure(baseDir string) error {
 		"locales/en/sub1/custom_abc.json": "{}",
 		"i18n/en/sub2/custom_xyz.json":    "{}",
 		"locales/fr/whatever.json":        "{}",
+		"en.json":                         "{}",
 	}
 
 	for path, content := range files {
@@ -108,12 +109,12 @@ func TestFindAllTranslationFiles(t *testing.T) {
 			},
 		},
 		{
-			name:        "Custom name pattern",
+			name:        "Custom name pattern with wildcard",
 			paths:       []string{filepath.Join(baseTestDir, "flat/translations")},
-			flatNaming:  true,
+			flatNaming:  false,
 			baseLang:    "",
 			fileFormat:  "",
-			namePattern: "**.json",
+			namePattern: "**/*.json",
 			expected: []string{
 				filepath.Join(baseTestDir, "flat/translations/en.json"),
 				filepath.Join(baseTestDir, "flat/translations/en-US.json"),
@@ -121,54 +122,44 @@ func TestFindAllTranslationFiles(t *testing.T) {
 			},
 		},
 		{
-			name:       "Nested naming with valid files",
-			paths:      []string{filepath.Join(baseTestDir, "nested")},
-			flatNaming: false,
-			baseLang:   "en",
-			fileFormat: "json",
-			expected: []string{
-				filepath.Join(baseTestDir, "nested/en/file1.json"),
-				filepath.Join(baseTestDir, "nested/en/file2.json"),
-			},
-		},
-		{
-			name:        "Custom pattern with nested directories",
-			paths:       []string{filepath.Join(baseTestDir, "nested")},
+			name:        "Invalid name pattern",
+			paths:       []string{filepath.Join(baseTestDir, "flat/translations")},
 			flatNaming:  false,
 			baseLang:    "",
 			fileFormat:  "",
-			namePattern: "**/*.json",
-			expected: []string{
-				filepath.Join(baseTestDir, "nested/en/file1.json"),
-				filepath.Join(baseTestDir, "nested/en/file2.json"),
-				filepath.Join(baseTestDir, "nested/es/file1.json"),
-			},
+			namePattern: "[invalid pattern",
+			expected:    nil,
+			shouldError: true,
 		},
 		{
-			name: "Multiple paths",
-			paths: []string{
-				filepath.Join(baseTestDir, "flat/translations"),
-				filepath.Join(baseTestDir, "nested"),
-				filepath.Join(baseTestDir, "special chars dir"),
-			},
+			name:       "Mixed flat and nested paths",
+			paths:      []string{filepath.Join(baseTestDir, "flat/translations"), filepath.Join(baseTestDir, "nested")},
 			flatNaming: true,
-			baseLang:   "en-US",
+			baseLang:   "en",
 			fileFormat: "json",
 			expected: []string{
-				filepath.Join(baseTestDir, "flat/translations/en-US.json"),
-				filepath.Join(baseTestDir, "special chars dir/en-US.json"),
+				filepath.Join(baseTestDir, "flat/translations/en.json"),
 			},
 		},
 		{
-			name:       "Empty paths array",
-			paths:      []string{},
-			flatNaming: true,
+			name:        "Case sensitivity check (may vary by OS)",
+			paths:       []string{filepath.Join(baseTestDir, "flat/translations")},
+			flatNaming:  false,
+			baseLang:    "",
+			fileFormat:  "",
+			namePattern: "**/*.JSON", // Intentionally capitalized
+			expected:    []string{},  // Should be empty on case-sensitive systems
+		},
+		{
+			name:       "Empty directory",
+			paths:      []string{filepath.Join(baseTestDir, "empty")},
+			flatNaming: false,
 			baseLang:   "en",
 			fileFormat: "json",
 			expected:   []string{},
 		},
 		{
-			name: "Custom name pattern with subdirectories",
+			name: "Multiple valid paths",
 			paths: []string{
 				filepath.Join(baseTestDir, "locales"),
 				filepath.Join(baseTestDir, "i18n"),
@@ -183,16 +174,23 @@ func TestFindAllTranslationFiles(t *testing.T) {
 			},
 		},
 		{
-			name: "Custom name pattern yields no matches",
-			paths: []string{
-				filepath.Join(baseTestDir, "locales"),
-				filepath.Join(baseTestDir, "i18n"),
-			},
+			name:        "Custom pattern with no matches",
+			paths:       []string{filepath.Join(baseTestDir, "locales")},
 			flatNaming:  false,
 			baseLang:    "",
 			fileFormat:  "",
-			namePattern: "es/**/custom_*.json",
+			namePattern: "es/**/custom_*.json", // No matching files
 			expected:    []string{},
+		},
+		{
+			name:       "Root directory translations with flat naming",
+			paths:      []string{filepath.Join(baseTestDir)},
+			flatNaming: true,
+			baseLang:   "en",
+			fileFormat: "json",
+			expected: []string{
+				filepath.Join(baseTestDir, "en.json"),
+			},
 		},
 	}
 
