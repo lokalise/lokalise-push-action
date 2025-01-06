@@ -46,6 +46,9 @@ func setupTestFileStructure(baseDir string) error {
 		"multiple/dir1/en",
 		"multiple/dir2/en",
 		"multiple/dir3/es",
+		"locales/en/sub1",
+		"locales/fr",
+		"i18n/en/sub2",
 	}
 
 	for _, dir := range dirs {
@@ -67,6 +70,9 @@ func setupTestFileStructure(baseDir string) error {
 		"multiple/dir1/en/file1.json":     "{}",
 		"multiple/dir2/en/file2.json":     "{}",
 		"multiple/dir3/es/file3.json":     "{}",
+		"locales/en/sub1/custom_abc.json": "{}",
+		"i18n/en/sub2/custom_xyz.json":    "{}",
+		"locales/fr/whatever.json":        "{}",
 	}
 
 	for path, content := range files {
@@ -160,6 +166,33 @@ func TestFindAllTranslationFiles(t *testing.T) {
 			baseLang:   "en",
 			fileFormat: "json",
 			expected:   []string{},
+		},
+		{
+			name: "Custom name pattern with subdirectories",
+			paths: []string{
+				filepath.Join(baseTestDir, "locales"),
+				filepath.Join(baseTestDir, "i18n"),
+			},
+			flatNaming:  false,
+			baseLang:    "",
+			fileFormat:  "",
+			namePattern: "en/**/custom_*.json",
+			expected: []string{
+				filepath.Join(baseTestDir, "locales/en/sub1/custom_abc.json"),
+				filepath.Join(baseTestDir, "i18n/en/sub2/custom_xyz.json"),
+			},
+		},
+		{
+			name: "Custom name pattern yields no matches",
+			paths: []string{
+				filepath.Join(baseTestDir, "locales"),
+				filepath.Join(baseTestDir, "i18n"),
+			},
+			flatNaming:  false,
+			baseLang:    "",
+			fileFormat:  "",
+			namePattern: "es/**/custom_*.json",
+			expected:    []string{},
 		},
 	}
 
