@@ -187,11 +187,14 @@ runs:
 
         git config --global user.name "${GITHUB_ACTOR}"
         git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
-        if ! git rev-parse "refs/tags/lokalise-upload-complete" >/dev/null 2>&1; then
+
+        git fetch --tags
+
+        if git ls-remote --tags origin | grep -q "refs/tags/lokalise-upload-complete$"; then
+          echo "Tag 'lokalise-upload-complete' already exists in remote."
+        else
           git tag -a "lokalise-upload-complete" -m "First Lokalise upload complete"
           git push origin "lokalise-upload-complete"
-        else
-          echo "Tag 'lokalise-upload-complete' already exists."
         fi
 
     - name: Verify file upload success
