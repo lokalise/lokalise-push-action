@@ -15,7 +15,7 @@ var exitFunc = os.Exit
 
 func main() {
 	// Validate and parse environment variables
-	translationsPaths, baseLang, fileFormat, namePattern := validateEnvironment()
+	translationsPaths, baseLang, fileExt, namePattern := validateEnvironment()
 
 	// Parse flat naming
 	flatNaming, err := parsers.ParseBoolEnv("FLAT_NAMING")
@@ -35,7 +35,7 @@ func main() {
 	}()
 
 	// Generate and store the translation paths
-	if err := storeTranslationPaths(translationsPaths, flatNaming, baseLang, fileFormat, namePattern, file); err != nil {
+	if err := storeTranslationPaths(translationsPaths, flatNaming, baseLang, fileExt, namePattern, file); err != nil {
 		returnWithError(fmt.Sprintf("cannot store translation paths: %v", err))
 	}
 }
@@ -44,7 +44,6 @@ func main() {
 func validateEnvironment() ([]string, string, string, string) {
 	translationsPaths := parsers.ParseStringArrayEnv("TRANSLATIONS_PATH")
 	baseLang := os.Getenv("BASE_LANG")
-	fileFormat := os.Getenv("FILE_FORMAT")
 	namePattern := os.Getenv("NAME_PATTERN")
 
 	if len(translationsPaths) == 0 {
@@ -53,16 +52,21 @@ func validateEnvironment() ([]string, string, string, string) {
 	if baseLang == "" {
 		returnWithError("BASE_LANG is not set or is empty")
 	}
-	if fileFormat == "" {
-		returnWithError("FILE_FORMAT is not set or is empty")
+
+	fileExt := os.Getenv("FILE_EXT")
+	if fileExt == "" {
+		fileExt = os.Getenv("FILE_FORMAT")
+	}
+	if fileExt == "" {
+		returnWithError("Cannot infer file extension. Make sure FILE_FORMAT or FILE_EXT environment variables are set")
 	}
 
-	return translationsPaths, baseLang, fileFormat, namePattern
+	return translationsPaths, baseLang, fileExt, namePattern
 }
 
 // storeTranslationPaths generates paths and writes them to paths.txt based on environment variables.
 // It constructs the appropriate file paths or glob patterns depending on the naming convention and name pattern.
-func storeTranslationPaths(paths []string, flatNaming bool, baseLang, fileFormat, namePattern string, writer io.Writer) error {
+func storeTranslationPaths(paths []string, flatNaming bool, baseLang, fileExt, namePattern string, writer io.Writer) error {
 	for _, path := range paths {
 		if path == "" {
 			continue // Skip empty paths.
@@ -74,10 +78,10 @@ func storeTranslationPaths(paths []string, flatNaming bool, baseLang, fileFormat
 			formattedPath = filepath.Join(".", path, namePattern)
 		} else if flatNaming {
 			// For flat naming, construct the path to the base language file.
-			formattedPath = filepath.Join(".", path, fmt.Sprintf("%s.%s", baseLang, fileFormat))
+			formattedPath = filepath.Join(".", path, fmt.Sprintf("%s.%s", baseLang, fileExt))
 		} else {
 			// For nested directories, construct a glob pattern to match all files in the base language directory.
-			formattedPath = filepath.Join(".", path, baseLang, "**", fmt.Sprintf("*.%s", fileFormat))
+			formattedPath = filepath.Join(".", path, baseLang, "**", fmt.Sprintf("*.%s", fileExt))
 		}
 
 		if _, err := writer.Write([]byte(formattedPath + "\n")); err != nil {

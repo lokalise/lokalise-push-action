@@ -47,11 +47,12 @@ You'll need to provide some parameters for the action. These can be set as envir
 - `api_token` — Lokalise API token with read/write permissions.
 - `project_id` — Your Lokalise project ID.
 - `translations_path` — One or more paths to your translations. For example, if your translations are stored in the `locales` folder at the project root, use `locales` (leave out leading and trailing slashes). Defaults to `locales`.
-- `file_format` — Translation file format. For example, if you're using JSON files, just put `json` (no leading dot needed). Defaults to `json`.
+- `file_format` — Defines the format of your translation files, such as `json` for JSON files. Defaults to `json`. This format determines how translation files are processed and also influences the file extension used when searching for them. However, some specific formats, such as `json_structured`, may still be downloaded with a generic `.json` extension. If you're using such a format, make sure to set the `file_ext` parameter explicitly to match the correct extension for your files. Alternatively, configure the `name_pattern` parameter.
 - `base_lang` — The base language of your project (e.g., `en` for English). Defaults to `en`.
 
 #### Optional parameters
 
+- `file_ext` — Custom file extension to use when searching for translation files (without leading dot). By default, the extension is inferred from the file_format value. However, for certain formats (e.g., `json_structured`), the downloaded files may still have a generic extension (e.g., `.json`). In such cases, this parameter allows specifying the correct extension manually to ensure proper file matching. This parameter has no effect when the `name_pattern` is provided.
 - `additional_params` — Extra parameters to pass to the [Lokalise CLI when pushing files](https://github.com/lokalise/lokalise-cli-2-go/blob/main/docs/lokalise2_file_upload.md). For example, you can use `--convert-placeholders` to handle placeholders. You can include multiple CLI arguments as needed. Defaults to an empty string.
 - `flat_naming` — Use flat naming convention. Set to `true` if your translation files follow a flat naming pattern like `locales/en.json` instead of `locales/en/file.json`. Defaults to `false`.
 - `name_pattern` — Custom pattern for naming translation files. Overrides default language-based naming. Must include both filename and extension if applicable (e.g., "custom_name.json" or "**.yaml"). Default behavior is used if not set.

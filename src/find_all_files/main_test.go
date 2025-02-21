@@ -93,7 +93,7 @@ func TestFindAllTranslationFiles(t *testing.T) {
 		paths       []string
 		flatNaming  bool
 		baseLang    string
-		fileFormat  string
+		fileExt     string
 		namePattern string
 		expected    []string
 		shouldError bool
@@ -103,7 +103,7 @@ func TestFindAllTranslationFiles(t *testing.T) {
 			paths:      []string{filepath.Join(baseTestDir, "flat/translations")},
 			flatNaming: true,
 			baseLang:   "en",
-			fileFormat: "json",
+			fileExt:    "json",
 			expected: []string{
 				filepath.Join(baseTestDir, "flat/translations/en.json"),
 			},
@@ -113,7 +113,7 @@ func TestFindAllTranslationFiles(t *testing.T) {
 			paths:       []string{filepath.Join(baseTestDir, "flat/translations")},
 			flatNaming:  false,
 			baseLang:    "",
-			fileFormat:  "",
+			fileExt:     "",
 			namePattern: "**/*.json",
 			expected: []string{
 				filepath.Join(baseTestDir, "flat/translations/en.json"),
@@ -126,7 +126,7 @@ func TestFindAllTranslationFiles(t *testing.T) {
 			paths:       []string{filepath.Join(baseTestDir, "flat/translations")},
 			flatNaming:  false,
 			baseLang:    "",
-			fileFormat:  "",
+			fileExt:     "",
 			namePattern: "[invalid pattern",
 			expected:    nil,
 			shouldError: true,
@@ -136,7 +136,7 @@ func TestFindAllTranslationFiles(t *testing.T) {
 			paths:      []string{filepath.Join(baseTestDir, "flat/translations"), filepath.Join(baseTestDir, "nested")},
 			flatNaming: true,
 			baseLang:   "en",
-			fileFormat: "json",
+			fileExt:    "json",
 			expected: []string{
 				filepath.Join(baseTestDir, "flat/translations/en.json"),
 			},
@@ -146,7 +146,7 @@ func TestFindAllTranslationFiles(t *testing.T) {
 			paths:       []string{filepath.Join(baseTestDir, "flat/translations")},
 			flatNaming:  false,
 			baseLang:    "",
-			fileFormat:  "",
+			fileExt:     "",
 			namePattern: "**/*.JSON", // Intentionally capitalized
 			expected:    []string{},  // Should be empty on case-sensitive systems
 		},
@@ -155,7 +155,7 @@ func TestFindAllTranslationFiles(t *testing.T) {
 			paths:      []string{filepath.Join(baseTestDir, "empty")},
 			flatNaming: false,
 			baseLang:   "en",
-			fileFormat: "json",
+			fileExt:    "json",
 			expected:   []string{},
 		},
 		{
@@ -166,7 +166,7 @@ func TestFindAllTranslationFiles(t *testing.T) {
 			},
 			flatNaming:  false,
 			baseLang:    "",
-			fileFormat:  "",
+			fileExt:     "",
 			namePattern: "en/**/custom_*.json",
 			expected: []string{
 				filepath.Join(baseTestDir, "locales/en/sub1/custom_abc.json"),
@@ -178,7 +178,7 @@ func TestFindAllTranslationFiles(t *testing.T) {
 			paths:       []string{filepath.Join(baseTestDir, "locales")},
 			flatNaming:  false,
 			baseLang:    "",
-			fileFormat:  "",
+			fileExt:     "",
 			namePattern: "es/**/custom_*.json", // No matching files
 			expected:    []string{},
 		},
@@ -187,7 +187,7 @@ func TestFindAllTranslationFiles(t *testing.T) {
 			paths:      []string{filepath.Join(baseTestDir)},
 			flatNaming: true,
 			baseLang:   "en",
-			fileFormat: "json",
+			fileExt:    "json",
 			expected: []string{
 				filepath.Join(baseTestDir, "en.json"),
 			},
@@ -198,7 +198,7 @@ func TestFindAllTranslationFiles(t *testing.T) {
 		tt := tt // Capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			actual, err := findAllTranslationFiles(tt.paths, tt.flatNaming, tt.baseLang, tt.fileFormat, tt.namePattern)
+			actual, err := findAllTranslationFiles(tt.paths, tt.flatNaming, tt.baseLang, tt.fileExt, tt.namePattern)
 
 			if tt.shouldError {
 				if err == nil {
@@ -232,7 +232,7 @@ func TestValidateEnvironment(t *testing.T) {
 		os.Setenv("NAME_PATTERN", "custom_name.json")
 		defer os.Clearenv()
 
-		paths, baseLang, fileFormat, namePattern := validateEnvironment()
+		paths, baseLang, fileExt, namePattern := validateEnvironment()
 
 		if len(paths) != 2 || paths[0] != "path1" || paths[1] != "path2" {
 			t.Errorf("Unexpected translations paths: %v", paths)
@@ -240,11 +240,26 @@ func TestValidateEnvironment(t *testing.T) {
 		if baseLang != "en" {
 			t.Errorf("Expected baseLang 'en', got '%s'", baseLang)
 		}
-		if fileFormat != "json" {
-			t.Errorf("Expected fileFormat 'json', got '%s'", fileFormat)
+		if fileExt != "json" {
+			t.Errorf("Expected fileExt 'json', got '%s'", fileExt)
 		}
 		if namePattern != "custom_name.json" {
 			t.Errorf("Expected namePattern 'custom_name.json', got '%s'", namePattern)
+		}
+	})
+
+	t.Run("FILE_EXT has precedence over FILE_FORMAT", func(t *testing.T) {
+		os.Setenv("TRANSLATIONS_PATH", "\npath1\npath2\n\n")
+		os.Setenv("BASE_LANG", "en")
+		os.Setenv("FILE_FORMAT", "json_structured")
+		os.Setenv("FILE_EXT", "json")
+		os.Setenv("NAME_PATTERN", "custom_name.json")
+		defer os.Clearenv()
+
+		_, _, fileExt, _ := validateEnvironment()
+
+		if fileExt != "json" {
+			t.Errorf("Expected fileExt 'json', got '%s'", fileExt)
 		}
 	})
 

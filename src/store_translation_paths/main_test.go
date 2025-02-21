@@ -32,7 +32,7 @@ func TestValidateEnvironment(t *testing.T) {
 		os.Setenv("NAME_PATTERN", "custom_name.json")
 		defer os.Clearenv()
 
-		paths, baseLang, fileFormat, namePattern := validateEnvironment()
+		paths, baseLang, fileExt, namePattern := validateEnvironment()
 
 		if len(paths) != 2 || paths[0] != "path1" || paths[1] != "path2" {
 			t.Errorf("Unexpected translations paths: %v", paths)
@@ -40,11 +40,26 @@ func TestValidateEnvironment(t *testing.T) {
 		if baseLang != "en" {
 			t.Errorf("Expected baseLang 'en', got '%s'", baseLang)
 		}
-		if fileFormat != "json" {
-			t.Errorf("Expected fileFormat 'json', got '%s'", fileFormat)
+		if fileExt != "json" {
+			t.Errorf("Expected fileExt 'json', got '%s'", fileExt)
 		}
 		if namePattern != "custom_name.json" {
 			t.Errorf("Expected namePattern 'custom_name.json', got '%s'", namePattern)
+		}
+	})
+
+	t.Run("FILE_EXT has precedence over FILE_FORMAT", func(t *testing.T) {
+		os.Setenv("TRANSLATIONS_PATH", "\npath1\n\npath2\n")
+		os.Setenv("BASE_LANG", "en")
+		os.Setenv("FILE_FORMAT", "json_structured")
+		os.Setenv("FILE_EXT", "json")
+		os.Setenv("NAME_PATTERN", "custom_name.json")
+		defer os.Clearenv()
+
+		_, _, fileExt, _ := validateEnvironment()
+
+		if fileExt != "json" {
+			t.Errorf("Expected fileExt 'json', got '%s'", fileExt)
 		}
 	})
 
@@ -66,7 +81,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 		paths       []string
 		flatNaming  bool
 		baseLang    string
-		fileFormat  string
+		fileExt     string
 		namePattern string
 		expected    []string
 		shouldError bool
@@ -76,7 +91,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 			paths:      []string{"translations", "more_translations"},
 			flatNaming: true,
 			baseLang:   "en",
-			fileFormat: "json",
+			fileExt:    "json",
 			expected: []string{
 				filepath.Join(".", "translations", "en.json"),
 				filepath.Join(".", "more_translations", "en.json"),
@@ -87,7 +102,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 			paths:       []string{"translations", "more_translations"},
 			flatNaming:  true,
 			baseLang:    "en",
-			fileFormat:  "json",
+			fileExt:     "json",
 			namePattern: "custom_name.json",
 			expected: []string{
 				filepath.Join(".", "translations", "custom_name.json"),
@@ -99,7 +114,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 			paths:       []string{"translations"},
 			flatNaming:  false,
 			baseLang:    "en",
-			fileFormat:  "json",
+			fileExt:     "json",
 			namePattern: "**.yaml",
 			expected: []string{
 				filepath.Join(".", "translations", "**.yaml"),
@@ -110,7 +125,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 			paths:      []string{"dir1/dir2/dir3", "another/nested/dir"},
 			flatNaming: true,
 			baseLang:   "fr",
-			fileFormat: "xml",
+			fileExt:    "xml",
 			expected: []string{
 				filepath.Join(".", "dir1", "dir2", "dir3", "fr.xml"),
 				filepath.Join(".", "another", "nested", "dir", "fr.xml"),
@@ -121,7 +136,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 			paths:      []string{"dir1/dir2/dir3", "another/nested/dir"},
 			flatNaming: false,
 			baseLang:   "de",
-			fileFormat: "properties",
+			fileExt:    "properties",
 			expected: []string{
 				filepath.Join(".", "dir1", "dir2", "dir3", "de", "**", "*.properties"),
 				filepath.Join(".", "another", "nested", "dir", "de", "**", "*.properties"),
@@ -133,7 +148,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 			paths:      []string{"."},
 			flatNaming: true,
 			baseLang:   "en",
-			fileFormat: "json",
+			fileExt:    "json",
 			expected: []string{
 				filepath.Join(".", ".", "en.json"), // normalizes to ././en.json, effectively ./en.json
 			},
@@ -143,7 +158,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 			paths:       []string{"."},
 			flatNaming:  false,
 			baseLang:    "en",
-			fileFormat:  "json",
+			fileExt:     "json",
 			namePattern: "some_dir/**.yaml",
 			expected: []string{
 				filepath.Join(".", ".", "some_dir", "**.yaml"), // e.g. ././some_dir/**.yaml
@@ -159,7 +174,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 			var buf bytes.Buffer
 
 			// Call the function with the buffer as writer
-			err := storeTranslationPaths(tt.paths, tt.flatNaming, tt.baseLang, tt.fileFormat, tt.namePattern, &buf)
+			err := storeTranslationPaths(tt.paths, tt.flatNaming, tt.baseLang, tt.fileExt, tt.namePattern, &buf)
 
 			if tt.shouldError {
 				if err == nil {
