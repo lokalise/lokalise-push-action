@@ -42,6 +42,14 @@ inputs:
     description: 'Do not assign tags to the uploaded translation keys on Lokalise'
     required: false
     default: false
+  skip_polling:
+    description: 'Do not wait for the upload operation to be marked as completed on Lokalise'
+    required: false
+    default: false
+  skip_default_flags:
+    description: 'Do not set any extra flags for the upload command'
+    required: false
+    default: false
   rambo_mode:
     description: 'Always upload all translation files for the base language regardless of changes'
     required: false
@@ -62,6 +70,10 @@ inputs:
     description: 'Timeout for the upload poll operation (in seconds)'
     required: false
     default: 120
+  platform:
+    description: 'Target platform for the binary (linux_amd64, linux_arm64, mac_amd64, mac_arm64)'
+    required: false
+    default: 'linux_amd64'
 permissions:
   contents: write
 branding:
@@ -88,10 +100,15 @@ runs:
         FILE_FORMAT: "${{ inputs.file_format }}"
         FILE_EXT: "${{ inputs.file_ext }}"
         NAME_PATTERN: "${{ inputs.name_pattern }}"
+        PLATFORM: "${{ inputs.platform }}"
       run: |
         set -e
 
-        CMD_PATH="${{ github.action_path }}/bin/store_translation_paths"
+        CMD_PATH="${{ github.action_path }}/bin/store_translation_paths_${PLATFORM}"
+        if [ ! -f "$CMD_PATH" ]; then
+          echo "Error: Binary for platform '${PLATFORM}' not found!"
+          exit 1
+        fi
         chmod +x "$CMD_PATH"
         $("$CMD_PATH") || {
           echo "Error: store_translation_paths script failed with exit code $?"
@@ -129,10 +146,15 @@ runs:
         FILE_EXT: "${{ inputs.file_ext }}"
         FLAT_NAMING: "${{ inputs.flat_naming }}"
         NAME_PATTERN: "${{ inputs.name_pattern }}"
+        PLATFORM: "${{ inputs.platform }}"
       run: |
         set -e
         
-        CMD_PATH="${{ github.action_path }}/bin/find_all_files"
+        CMD_PATH="${{ github.action_path }}/bin/find_all_files_${PLATFORM}"
+        if [ ! -f "$CMD_PATH" ]; then
+          echo "Error: Binary for platform '${PLATFORM}' not found!"
+          exit 1
+        fi
         chmod +x "$CMD_PATH"
         $("$CMD_PATH") || {
           echo "Error: find_all_files script failed with exit code $?"
@@ -155,6 +177,9 @@ runs:
         UPLOAD_TIMEOUT: ${{ inputs.upload_timeout }}
         UPLOAD_POLL_TIMEOUT: ${{ inputs.upload_poll_timeout }}
         SKIP_TAGGING: ${{ inputs.skip_tagging }}
+        SKIP_POLLING: ${{ inputs.skip_polling }}
+        SKIP_DEFAULT_FLAGS: ${{ inputs.skip_default_flags }}
+        PLATFORM: "${{ inputs.platform }}"
       run: |
         set -e
 
@@ -170,7 +195,11 @@ runs:
           exit 1
         fi
 
-        CMD_PATH="${{ github.action_path }}/bin/lokalise_upload"
+        CMD_PATH="${{ github.action_path }}/bin/lokalise_upload_${PLATFORM}"
+        if [ ! -f "$CMD_PATH" ]; then
+          echo "Error: Binary for platform '${PLATFORM}' not found!"
+          exit 1
+        fi
         chmod +x "$CMD_PATH"
 
         set +e

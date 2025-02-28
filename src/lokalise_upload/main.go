@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bodrovis/lokalise-actions-common/v2/parsers"
+	"github.com/mattn/go-shellwords"
 )
 
 // exitFunc is a function variable that defaults to os.Exit.
@@ -35,6 +36,8 @@ type UploadConfig struct {
 	GitHubRefName    string
 	AdditionalParams string
 	SkipTagging      bool
+	SkipPolling      bool
+	SkipDefaultFlags bool
 	MaxRetries       int
 	SleepTime        int
 	PollTimeout      int
@@ -52,6 +55,16 @@ func main() {
 		returnWithError("Invalid value for the skip_tagging parameter.")
 	}
 
+	skipPolling, err := parsers.ParseBoolEnv("SKIP_POLLING")
+	if err != nil {
+		returnWithError("Invalid value for the skip_polling parameter.")
+	}
+
+	skipDefaultFlags, err := parsers.ParseBoolEnv("SKIP_DEFAULT_FLAGS")
+	if err != nil {
+		returnWithError("Invalid value for the skip_default_flags parameter.")
+	}
+
 	// Create the configuration struct
 	config := UploadConfig{
 		FilePath:         os.Args[1],
@@ -61,6 +74,8 @@ func main() {
 		GitHubRefName:    os.Getenv("GITHUB_REF_NAME"),
 		AdditionalParams: os.Getenv("CLI_ADD_PARAMS"),
 		SkipTagging:      skipTagging,
+		SkipPolling:      skipPolling,
+		SkipDefaultFlags: skipDefaultFlags,
 		MaxRetries:       parsers.ParseUintEnv("MAX_RETRIES", defaultMaxRetries),
 		SleepTime:        parsers.ParseUintEnv("SLEEP_TIME", defaultSleepTime),
 		PollTimeout:      parsers.ParseUintEnv("UPLOAD_POLL_TIMEOUT", defaultPollTimeout),
@@ -175,20 +190,26 @@ func constructArgs(config UploadConfig) []string {
 		"file", "upload",
 		fmt.Sprintf("--file=%s", config.FilePath),
 		fmt.Sprintf("--lang-iso=%s", config.LangISO),
-		"--replace-modified",
-		"--include-path",
-		"--distinguish-by-file",
-		"--poll",
-		fmt.Sprintf("--poll-timeout=%ds", config.PollTimeout),
+	}
+
+	if !config.SkipDefaultFlags {
+		args = append(args, "--replace-modified", "--include-path", "--distinguish-by-file")
+	}
+
+	if !config.SkipPolling {
+		args = append(args, "--poll", fmt.Sprintf("--poll-timeout=%ds", config.PollTimeout))
 	}
 
 	if !config.SkipTagging {
 		args = append(args, "--tag-inserted-keys", "--tag-skipped-keys", "--tag-updated-keys", "--tags", config.GitHubRefName)
 	}
 
-	// Add additional params from the environment variable
 	if config.AdditionalParams != "" {
-		args = append(args, strings.Fields(config.AdditionalParams)...)
+		parsedParams, err := shellwords.Parse(config.AdditionalParams)
+		if err != nil {
+			returnWithError(fmt.Sprintf("Failed to parse additional parameters: %v", err))
+		}
+		args = append(args, parsedParams...)
 	}
 
 	return args
