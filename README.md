@@ -65,7 +65,7 @@ You'll need to provide some parameters for the action. These can be set as envir
 - `sleep_on_retry` — Number of seconds to sleep before retrying on rate limit errors. Defaults to `1`.
 - `upload_timeout` — Timeout for the upload operation, in seconds. Defaults to `120`.
 - `upload_poll_timeout` — Timeout for the upload poll operation, in seconds. Defaults to `120`.
-- `platform` — Target platform for the precompiled binaries used by this action (`linux_amd64`, `linux_arm64`, `mac_amd64`, `mac_arm64`). These binaries handle tasks like uploading and processing translations. Typically, you don't need to change this, as the default (`linux_amd64`) works for most environments. Override if running on a macOS runner or a different architecture.
+- `os_platform` — Target platform for the precompiled binaries used by this action (`linux_amd64`, `linux_arm64`, `mac_amd64`, `mac_arm64`). These binaries handle tasks like uploading and processing translations. Typically, you don't need to change this, as the default (`linux_amd64`) works for most environments. Override if running on a macOS runner or a different architecture.
 
 ## Technical details
 

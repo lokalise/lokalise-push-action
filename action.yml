@@ -70,7 +70,7 @@ inputs:
     description: 'Timeout for the upload poll operation (in seconds)'
     required: false
     default: 120
-  platform:
+  os_platform:
     description: 'Target platform for the binary (linux_amd64, linux_arm64, mac_amd64, mac_arm64)'
     required: false
     default: 'linux_amd64'
@@ -100,7 +100,7 @@ runs:
         FILE_FORMAT: "${{ inputs.file_format }}"
         FILE_EXT: "${{ inputs.file_ext }}"
         NAME_PATTERN: "${{ inputs.name_pattern }}"
-        PLATFORM: "${{ inputs.platform }}"
+        PLATFORM: "${{ inputs.os_platform }}"
       run: |
         set -e
 
@@ -146,7 +146,7 @@ runs:
         FILE_EXT: "${{ inputs.file_ext }}"
         FLAT_NAMING: "${{ inputs.flat_naming }}"
         NAME_PATTERN: "${{ inputs.name_pattern }}"
-        PLATFORM: "${{ inputs.platform }}"
+        PLATFORM: "${{ inputs.os_platform }}"
       run: |
         set -e
         
@@ -179,7 +179,7 @@ runs:
         SKIP_TAGGING: ${{ inputs.skip_tagging }}
         SKIP_POLLING: ${{ inputs.skip_polling }}
         SKIP_DEFAULT_FLAGS: ${{ inputs.skip_default_flags }}
-        PLATFORM: "${{ inputs.platform }}"
+        PLATFORM: "${{ inputs.os_platform }}"
       run: |
         set -e
 
