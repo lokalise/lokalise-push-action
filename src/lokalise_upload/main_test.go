@@ -407,14 +407,20 @@ func TestConstructArgs(t *testing.T) {
 		{
 			name: "Configuration with multiple additional params",
 			config: UploadConfig{
-				FilePath:         "testfile.json",
-				ProjectID:        "test_project",
-				Token:            "test_token",
-				LangISO:          "en",
-				GitHubRefName:    "main",
-				AdditionalParams: `--custom-flag=true --another-flag=false --quoted="some value" --json='{"key": "value with space"}' --empty-flag= --complex="mode=debug,verbose=true"`,
-				PollTimeout:      120,
-				SkipTagging:      false,
+				FilePath:      "testfile.json",
+				ProjectID:     "test_project",
+				Token:         "test_token",
+				LangISO:       "en",
+				GitHubRefName: "main",
+				AdditionalParams: `
+--convert-placeholders
+--custom-flag=true
+--another-flag=false
+--quoted="some value"
+--json={"key": "value with space"}
+`,
+				PollTimeout: 120,
+				SkipTagging: false,
 			},
 			expected: []string{
 				"--token=test_token",
@@ -431,24 +437,27 @@ func TestConstructArgs(t *testing.T) {
 				"--tag-skipped-keys",
 				"--tag-updated-keys",
 				"--tags", "main",
+				"--convert-placeholders",
 				"--custom-flag=true",
 				"--another-flag=false",
-				"--quoted=some value",
-				"--json={\"key\": \"value with space\"}",
-				"--empty-flag=",
-				"--complex=mode=debug,verbose=true",
+				`--quoted="some value"`,
+				`--json={"key": "value with space"}`,
 			},
 		},
 		{
 			name: "Configuration with extra spaces in additional params",
 			config: UploadConfig{
-				FilePath:         "testfile.json",
-				ProjectID:        "test_project",
-				Token:            "test_token",
-				LangISO:          "en",
-				GitHubRefName:    "main",
-				AdditionalParams: "  --flag1=value1   --flag2=value2    --spaced=\"this  has   multiple spaces\"  ",
-				PollTimeout:      120,
+				FilePath:      "testfile.json",
+				ProjectID:     "test_project",
+				Token:         "test_token",
+				LangISO:       "en",
+				GitHubRefName: "main",
+				AdditionalParams: `
+--flag1=value1
+--flag2=value2
+--spaced="this  has   multiple spaces"
+`,
+				PollTimeout: 120,
 			},
 			expected: []string{
 				"--token=test_token",
@@ -467,7 +476,7 @@ func TestConstructArgs(t *testing.T) {
 				"--tags", "main",
 				"--flag1=value1",
 				"--flag2=value2",
-				"--spaced=this  has   multiple spaces",
+				`--spaced="this  has   multiple spaces"`,
 			},
 		},
 		{
@@ -492,6 +501,50 @@ func TestConstructArgs(t *testing.T) {
 				"--distinguish-by-file",
 				"--poll",
 				"--poll-timeout=0s",
+			},
+		},
+		{
+			name: "Configuration with multiple additional params (YAML style)",
+			config: UploadConfig{
+				FilePath:      "locales/en.json",
+				ProjectID:     "proj_abc123",
+				Token:         "super_secret",
+				LangISO:       "en",
+				GitHubRefName: "release",
+				PollTimeout:   180,
+				AdditionalParams: `
+--directory-prefix=%LANG_ISO%
+--indentation=4sp
+--json-unescaped-slashes=true
+--export-empty-as=skip
+--export-sort=a_z
+--replace-breaks=false
+--language-mapping=[{"original_language_iso":"en_US","custom_language_iso":"en-US"},{"original_language_iso":"fr_CA","custom_language_iso":"fr-CA"}]
+`,
+			},
+			expected: []string{
+				"--token=super_secret",
+				"--project-id=proj_abc123",
+				"file", "upload",
+				"--file=locales/en.json",
+				"--lang-iso=en",
+				"--replace-modified",
+				"--include-path",
+				"--distinguish-by-file",
+				"--poll",
+				"--poll-timeout=180s",
+				"--tag-inserted-keys",
+				"--tag-skipped-keys",
+				"--tag-updated-keys",
+				"--tags", "release",
+				"--directory-prefix=%LANG_ISO%",
+				"--indentation=4sp",
+				"--json-unescaped-slashes=true",
+				"--export-empty-as=skip",
+				"--export-sort=a_z",
+				"--replace-breaks=false",
+				// Note that in reality the upload does not have language mappings
+				`--language-mapping=[{"original_language_iso":"en_US","custom_language_iso":"en-US"},{"original_language_iso":"fr_CA","custom_language_iso":"fr-CA"}]`,
 			},
 		},
 	}

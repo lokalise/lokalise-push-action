@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -11,7 +12,6 @@ import (
 	"time"
 
 	"github.com/bodrovis/lokalise-actions-common/v2/parsers"
-	"github.com/mattn/go-shellwords"
 )
 
 // exitFunc is a function variable that defaults to os.Exit.
@@ -205,11 +205,13 @@ func constructArgs(config UploadConfig) []string {
 	}
 
 	if config.AdditionalParams != "" {
-		parsedParams, err := shellwords.Parse(config.AdditionalParams)
-		if err != nil {
-			returnWithError(fmt.Sprintf("Failed to parse additional parameters: %v", err))
+		scanner := bufio.NewScanner(strings.NewReader(config.AdditionalParams))
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line != "" {
+				args = append(args, line)
+			}
 		}
-		args = append(args, parsedParams...)
 	}
 
 	return args

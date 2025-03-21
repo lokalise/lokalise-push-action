@@ -24,16 +24,18 @@ jobs:
           fetch-depth: 0
 
       - name: Push to Lokalise
-        uses: lokalise/lokalise-push-action@v3.3.0
+        uses: lokalise/lokalise-push-action@v3.4.0
         with:
           api_token: ${{ secrets.LOKALISE_API_TOKEN }}
           project_id: LOKALISE_PROJECT_ID
-          base_lang: BASE_LANG_ISO
+          base_lang: en
           translations_path: |
             TRANSLATIONS_PATH1
             TRANSLATIONS_PATH2
-          file_format: FILE_FORMAT
-          additional_params: ADDITIONAL_CLI_PARAMS
+          file_format: json
+          additional_params: |
+            --convert-placeholders
+            --hidden-from-contributors
 ```
 
 ## Configuration
@@ -53,7 +55,14 @@ You'll need to provide some parameters for the action. These can be set as envir
 #### Optional parameters
 
 - `file_ext` — Custom file extension to use when searching for translation files (without leading dot). By default, the extension is inferred from the file_format value. However, for certain formats (e.g., `json_structured`), the files may still have a generic extension (e.g., `.json`). In such cases, this parameter allows specifying the correct extension manually to ensure proper file matching. This parameter has no effect when the `name_pattern` is provided.
-- `additional_params` — Extra parameters to pass to the [Lokalise CLI when pushing files](https://github.com/lokalise/lokalise-cli-2-go/blob/main/docs/lokalise2_file_upload.md). For example, you can use `--convert-placeholders` to handle placeholders. You can include multiple CLI arguments as needed. Defaults to an empty string.
+- `additional_params` — Extra parameters to pass to the [Lokalise CLI when pushing files](https://github.com/lokalise/lokalise-cli-2-go/blob/main/docs/lokalise2_file_upload.md). For example, you can use `--convert-placeholders` to handle placeholders. Defaults to an empty string. You can include multiple CLI arguments as needed.
+
+```yaml
+additional_params: |
+  --convert-placeholders
+  --hidden-from-contributors
+```
+
 - `flat_naming` — Use flat naming convention. Set to `true` if your translation files follow a flat naming pattern like `locales/en.json` instead of `locales/en/file.json`. Defaults to `false`.
 - `name_pattern` — Custom pattern for naming translation files. Overrides default language-based naming. Must include both filename and extension if applicable (e.g., "custom_name.json" or "**.yaml"). Default behavior is used if not set.
   + When the `name_pattern` is set, the action will respect your `translations_path` but won't append any language names as folders. Therefore, if you want to upload all JSON files with custom naming for the English locale, you'll need to provide `name_pattern: "en/**/custom_*.json"`. To upload all JSON files stored directly under `translations_path`, you'll set `name_pattern: "custom_*.json"`. The latter approach is similar to `flat_naming` but enables you to define custom patterns.
