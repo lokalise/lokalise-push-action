@@ -164,8 +164,10 @@ runs:
 
     - name: Install Lokalise CLIv2
       if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
-      # lokalise/install-lokalise-cli-v2@v1.1.1
-      uses: lokalise/install-lokalise-cli-v2@ca4b3cfba6b9fc71a92076f501084d9d1903ac5e
+      # lokalise/install-lokalise-cli-v2@v1.2.0
+      uses: lokalise/install-lokalise-cli-v2@0aadabc1b6dfecb602435c1d52fdbfd828c1af01
+      with:
+        target-version: 3.1.1
 
     - name: Push translation files to Lokalise
       if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
