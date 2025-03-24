@@ -118,7 +118,8 @@ runs:
     - name: Get changed files
       if: inputs.rambo_mode != 'true'
       id: changed-files
-      uses: tj-actions/changed-files@v46.0.1
+      # tj-actions/changed-files@v46.0.1
+      uses: tj-actions/changed-files@27ae6b33eaed7bf87272fdeb9f1c54f9facc9d99
       with:
         files_from_source_file: lok_action_paths_temp.txt
         separator: ','
@@ -163,7 +164,8 @@ runs:
 
     - name: Install Lokalise CLIv2
       if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
-      uses: lokalise/install-lokalise-cli-v2@v1.1.1
+      # lokalise/install-lokalise-cli-v2@v1.1.1
+      uses: lokalise/install-lokalise-cli-v2@ca4b3cfba6b9fc71a92076f501084d9d1903ac5e
 
     - name: Push translation files to Lokalise
       if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
