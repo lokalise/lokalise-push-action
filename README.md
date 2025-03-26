@@ -40,11 +40,9 @@ jobs:
 
 ## Configuration
 
-### Parameters
-
 You'll need to provide some parameters for the action. These can be set as environment variables, secrets, or passed directly. Refer to the [General setup](https://developers.lokalise.com/docs/github-actions#general-setup-overview) section for detailed instructions.
 
-#### Mandatory parameters
+### Mandatory parameters
 
 - `api_token` — Lokalise API token with read/write permissions.
 - `project_id` — Your Lokalise project ID.
@@ -52,10 +50,10 @@ You'll need to provide some parameters for the action. These can be set as envir
 - `file_format` — Defines the format of your translation files, such as `json` for JSON files. Defaults to `json`. This format determines how translation files are processed and also influences the file extension used when searching for them. However, some specific formats, such as `json_structured`, still use the generic `.json` extension. If you're using such a format, make sure to set the `file_ext` parameter explicitly to match the correct extension for your files. Alternatively, configure the `name_pattern` parameter.
 - `base_lang` — The base language of your project (e.g., `en` for English). Defaults to `en`.
 
-#### Optional parameters
+### File and CLI options
 
-- `file_ext` — Custom file extension to use when searching for translation files (without leading dot). By default, the extension is inferred from the file_format value. However, for certain formats (e.g., `json_structured`), the files may still have a generic extension (e.g., `.json`). In such cases, this parameter allows specifying the correct extension manually to ensure proper file matching. This parameter has no effect when the `name_pattern` is provided.
-- `additional_params` — Extra parameters to pass to the [Lokalise CLI when pushing files](https://github.com/lokalise/lokalise-cli-2-go/blob/main/docs/lokalise2_file_upload.md). For example, you can use `--convert-placeholders` to handle placeholders. Defaults to an empty string. You can include multiple CLI arguments as needed.
+- `file_ext` — Custom file extension to use when searching for translation files (without leading dot). By default, the extension is inferred from the `file_format` value. However, for certain formats (e.g., `json_structured`), the files may still have a generic extension (e.g., `.json`). In such cases, this parameter allows specifying the correct extension manually to ensure proper file matching. This parameter has no effect when the `name_pattern` is provided.
+- `additional_params` — Extra parameters to pass to the [Lokalise CLI when pushing files](https://github.com/lokalise/lokalise-cli-2-go/blob/main/docs/lokalise2_file_upload.md). For example, you can use `--convert-placeholders` to handle placeholders. Defaults to an empty string. You can include multiple CLI arguments as needed:
 
 ```yaml
 additional_params: |
@@ -64,8 +62,14 @@ additional_params: |
 ```
 
 - `flat_naming` — Use flat naming convention. Set to `true` if your translation files follow a flat naming pattern like `locales/en.json` instead of `locales/en/file.json`. Defaults to `false`.
-- `name_pattern` — Custom pattern for naming translation files. Overrides default language-based naming. Must include both filename and extension if applicable (e.g., "custom_name.json" or "**.yaml"). Default behavior is used if not set.
-  + When the `name_pattern` is set, the action will respect your `translations_path` but won't append any language names as folders. Therefore, if you want to upload all JSON files with custom naming for the English locale, you'll need to provide `name_pattern: "en/**/custom_*.json"`. To upload all JSON files stored directly under `translations_path`, you'll set `name_pattern: "custom_*.json"`. The latter approach is similar to `flat_naming` but enables you to define custom patterns.
+- `name_pattern` — Custom pattern for naming translation files. Overrides default language-based naming. Must include both filename and extension if applicable (e.g., `"custom_name.json"` or `"**.yaml"`). Default behavior is used if not set.  
+  + When `name_pattern` is set, the action respects your `translations_path` but does not append language-based folders. For example:  
+    - `"en/**/custom_*.json"` will match nested files for the `en` locale  
+    - `"custom_*.json"` matches files directly under the given path  
+  This approach gives you fine-grained control similar to `flat_naming`, but with more flexibility.
+
+### Behavior and retry settings
+
 - `skip_tagging` — Do not assign tags to the uploaded translation keys on Lokalise. Set this to `true` to skip adding tags like inserted, skipped, or updated keys. Defaults to `false`.
 - `skip_polling` — Skips waiting for the upload operation to complete. When set to `true`, the `upload_poll_timeout` parameter is ignored. Defaults to `false`.
 - `skip_default_flags` — Prevents the action from setting additional default flags for the `upload` command. By default, the action includes `--replace-modified --include-path --distinguish-by-file`. When `skip_default_flags` is `true`, these flags are not added. Defaults to `false`.
@@ -74,9 +78,15 @@ additional_params: |
 - `sleep_on_retry` — Number of seconds to sleep before retrying on rate limit errors. Defaults to `1`.
 - `upload_timeout` — Timeout for the upload operation, in seconds. Defaults to `120`.
 - `upload_poll_timeout` — Timeout for the upload poll operation, in seconds. Defaults to `120`.
-- `os_platform` — Target platform for the precompiled binaries used by this action (`linux_amd64`, `linux_arm64`, `mac_amd64`, `mac_arm64`). These binaries handle tasks like uploading and processing translations. Typically, you don't need to change this, as the default (`linux_amd64`) works for most environments. Override if running on a macOS runner or a different architecture.
+
+### Git configuration
+
 - `git_user_name` — Optional Git username to use when tagging the initial Lokalise upload. If not provided, the action will default to the GitHub actor that triggered the workflow. This is useful if you'd like to show a more descriptive or bot-specific name in your Git history (e.g., "Lokalise Sync Bot").
 - `git_user_email` — Optional Git email to associate with the Git tag for the initial Lokalise upload. If not set, the action will use a noreply address based on the username (e.g., `username@users.noreply.github.com`). Useful for customizing commit/tag authorship or when working in teams with dedicated automation accounts.
+
+### Platform support
+
+- `os_platform` — Target platform for the precompiled binaries used by this action (`linux_amd64`, `linux_arm64`, `mac_amd64`, `mac_arm64`). These binaries handle tasks like uploading and processing translations. Typically, you don't need to change this, as the default (`linux_amd64`) works for most environments. Override if running on a macOS runner or a different architecture.
 
 ## Technical details
 
