@@ -74,6 +74,14 @@ inputs:
     description: 'Target platform for the binary (linux_amd64, linux_arm64, mac_amd64, mac_arm64)'
     required: false
     default: 'linux_amd64'
+  git_user_name:
+    description: 'Optional Git username to use when tagging the initial Lokalise upload. Defaults to GitHub actor.'
+    required: false
+    default: ''
+  git_user_email:
+    description: 'Optional Git email to use when tagging the initial Lokalise upload. Defaults to "<username>@users.noreply.github.com".'
+    required: false
+    default: ''
 permissions:
   contents: write
 branding:
@@ -221,11 +229,17 @@ runs:
     - name: Mark Lokalise upload as complete
       if: steps.check-first-run.outputs.first_run == 'true'
       shell: bash
+      env:
+        GIT_USER_NAME: "${{ inputs.git_user_name }}"
+        GIT_USER_EMAIL: "${{ inputs.git_user_email }}"
       run: |
         set -e
 
-        git config --global user.name "${GITHUB_ACTOR}"
-        git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+        USER_NAME="${GIT_USER_NAME:-$GITHUB_ACTOR}"
+        USER_EMAIL="${GIT_USER_EMAIL:-${USER_NAME}@users.noreply.github.com}"
+
+        git config --global user.name "$USER_NAME"
+        git config --global user.email "$USER_EMAIL"
 
         git fetch --tags
 

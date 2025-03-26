@@ -24,7 +24,7 @@ jobs:
           fetch-depth: 0
 
       - name: Push to Lokalise
-        uses: lokalise/lokalise-push-action@v3.4.0
+        uses: lokalise/lokalise-push-action@v3.5.0
         with:
           api_token: ${{ secrets.LOKALISE_API_TOKEN }}
           project_id: LOKALISE_PROJECT_ID
@@ -75,6 +75,8 @@ additional_params: |
 - `upload_timeout` — Timeout for the upload operation, in seconds. Defaults to `120`.
 - `upload_poll_timeout` — Timeout for the upload poll operation, in seconds. Defaults to `120`.
 - `os_platform` — Target platform for the precompiled binaries used by this action (`linux_amd64`, `linux_arm64`, `mac_amd64`, `mac_arm64`). These binaries handle tasks like uploading and processing translations. Typically, you don't need to change this, as the default (`linux_amd64`) works for most environments. Override if running on a macOS runner or a different architecture.
+- `git_user_name` — Optional Git username to use when tagging the initial Lokalise upload. If not provided, the action will default to the GitHub actor that triggered the workflow. This is useful if you'd like to show a more descriptive or bot-specific name in your Git history (e.g., "Lokalise Sync Bot").
+- `git_user_email` — Optional Git email to associate with the Git tag for the initial Lokalise upload. If not set, the action will use a noreply address based on the username (e.g., `username@users.noreply.github.com`). Useful for customizing commit/tag authorship or when working in teams with dedicated automation accounts.
 
 ## Technical details
 
