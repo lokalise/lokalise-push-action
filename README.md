@@ -1,4 +1,4 @@
-# GitHub action to push changed translation files from Lokalise
+# GitHub action to push changed translation files to Lokalise
 
 GitHub action to upload changed translation files in the base language from your GitHub repository to [Lokalise TMS](https://lokalise.com/).
 
