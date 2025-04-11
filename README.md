@@ -53,7 +53,7 @@ You'll need to provide some parameters for the action. These can be set as envir
 ### File and CLI options
 
 - `file_ext` — Custom file extension to use when searching for translation files (without leading dot). By default, the extension is inferred from the `file_format` value. However, for certain formats (e.g., `json_structured`), the files may still have a generic extension (e.g., `.json`). In such cases, this parameter allows specifying the correct extension manually to ensure proper file matching. This parameter has no effect when the `name_pattern` is provided.
-- `additional_params` — Extra parameters to pass to the [Lokalise CLI when pushing files](https://github.com/lokalise/lokalise-cli-2-go/blob/main/docs/lokalise2_file_upload.md). For example, you can use `--convert-placeholders` to handle placeholders. Defaults to an empty string. You can include multiple CLI arguments as needed:
+- `additional_params` — Extra parameters to pass to the [Lokalise CLI when pushing files](https://github.com/lokalise/lokalise-cli-2-go/blob/main/docs/lokalise2_file_upload.md). For example, you can use `--convert-placeholders` to handle placeholders. Defaults to an empty string. Be careful when setting the `include-path` additional parameter to `false`, as it will mean your keys won't be assigned with any filename upon upload: this might pose a problem if you're planning to utilize the pull action to download translation back. You can include multiple CLI arguments as needed:
 
 ```yaml
 additional_params: |

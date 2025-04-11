@@ -126,8 +126,8 @@ runs:
     - name: Get changed files
       if: inputs.rambo_mode != 'true'
       id: changed-files
-      # tj-actions/changed-files@v46.0.1
-      uses: tj-actions/changed-files@27ae6b33eaed7bf87272fdeb9f1c54f9facc9d99
+      # tj-actions/changed-files@v46.0.4
+      uses: tj-actions/changed-files@6cb76d07bee4c9772c6882c06c37837bf82a04d3
       with:
         files_from_source_file: lok_action_paths_temp.txt
         separator: ','
