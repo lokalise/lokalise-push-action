@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"reflect"
@@ -154,8 +155,15 @@ func TestUploadFile(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Failed to create temp file: %v", err)
 				}
-				f.Close()
-				defer os.Remove(tt.config.FilePath)
+				err = f.Close()
+				if err != nil {
+					log.Printf("Failed to close %s: %v", tt.config.FilePath, err)
+				}
+				defer func() {
+					if err := os.Remove(tt.config.FilePath); err != nil {
+						log.Printf("Failed to remove %s: %v", tt.config.FilePath, err)
+					}
+				}()
 			}
 
 			// Capture panic to test error handling
@@ -271,15 +279,21 @@ func TestValidate(t *testing.T) {
 		tt := tt // Capture range variable
 
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			// Create a temporary file if needed
 			if tt.config.FilePath != "" && tt.config.FilePath != "non_existent_file.json" {
 				f, err := os.Create(tt.config.FilePath)
 				if err != nil {
 					t.Fatalf("Failed to create temp file: %v", err)
 				}
-				f.Close()
-				defer os.Remove(tt.config.FilePath)
+				err = f.Close()
+				if err != nil {
+					log.Printf("Failed to close %s: %v", tt.config.FilePath, err)
+				}
+				defer func() {
+					if err := os.Remove(tt.config.FilePath); err != nil {
+						log.Printf("Failed to remove %s: %v", tt.config.FilePath, err)
+					}
+				}()
 			}
 
 			// Capture panic to test error handling

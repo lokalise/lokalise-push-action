@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -28,7 +29,10 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 
 	// Cleanup
-	os.RemoveAll(baseTestDir)
+	err = os.RemoveAll(baseTestDir)
+	if err != nil {
+		log.Printf("Failed to remove %s: %v", baseTestDir, err)
+	}
 	// Restore exitFunc after testing (optional)
 	exitFunc = os.Exit
 
