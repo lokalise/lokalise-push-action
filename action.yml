@@ -209,8 +209,19 @@ runs:
     - name: Find all translation files
       if: |
         inputs.rambo_mode == 'true' ||
-        (inputs.use_tag_tracking == 'true' && steps.check-sha.outputs.identical == 'true' && steps.check-first-run.outputs.first_run == 'true') ||
-        (steps.changed-files.outputs.any_changed == 'false' && steps.check-first-run.outputs.first_run == 'true')
+        (
+          inputs.use_tag_tracking == 'true' &&
+          steps.check-first-run.outputs.first_run == 'true' &&
+          (
+            steps.check-sha.outputs.identical == 'true' ||
+            steps.changed-files.outputs.any_changed == 'false'
+          )
+        ) ||
+        (
+          inputs.use_tag_tracking != 'true' &&
+          steps.changed-files.outputs.any_changed == 'false' &&
+          steps.check-first-run.outputs.first_run == 'true'
+        )
       id: find-files
       shell: bash
       env:
@@ -228,14 +239,21 @@ runs:
 
         if [ "${{ inputs.rambo_mode }}" == "true" ]; then
           echo "Rambo mode is enabled: uploading all files regardless of changes."
-        elif [ "${{ inputs.use_tag_tracking }}" == "true" ] && [ "${{ steps.check-sha.outputs.identical }}" == "true" ] && [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ]; then
-          echo "No new commits since last sync, but this is the first action run: uploading all files."
-        elif [ "${{ inputs.use_tag_tracking }}" != "true" ] && [ "${{ steps.changed-files.outputs.any_changed }}" == "false" ] && [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ]; then
+
+        elif [ "${{ inputs.use_tag_tracking }}" == "true" ] && \
+            [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ] && \
+            { [ "${{ steps.check-sha.outputs.identical }}" == "true" ] || [ "${{ steps.changed-files.outputs.any_changed }}" == "false" ]; }; then
+          echo "Either no new commits or no file changes detected, and it's the first action run: uploading all files."
+
+        elif [ "${{ inputs.use_tag_tracking }}" != "true" ] && \
+            [ "${{ steps.changed-files.outputs.any_changed }}" == "false" ] && \
+            [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ]; then
           echo "No file changes detected, and it's the first action run: uploading all files."
+
         else
           echo "Not sure how we got here, but collecting all files anyway. This is probably unexpected, check your workflow."
         fi
-        
+
         CMD_PATH="${{ github.action_path }}/bin/find_all_files_${PLATFORM}"
         if [ ! -f "$CMD_PATH" ]; then
           echo "Error: Binary for platform '${PLATFORM}' not found!"
