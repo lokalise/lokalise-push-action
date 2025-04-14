@@ -129,6 +129,8 @@ runs:
           exit 1
         }
 
+        echo "Translations paths have been set!"
+
     - name: Get last sync tag SHA
       if: inputs.rambo_mode != 'true' && inputs.use_tag_tracking == 'true'
       id: get-last-sync-sha
@@ -197,8 +199,10 @@ runs:
         echo "Checking if this is the first action run..."
 
         if git rev-parse "refs/tags/lokalise-upload-complete" >/dev/null 2>&1; then
+          echo "This is not the first action run."
           echo "first_run=false" >> $GITHUB_OUTPUT
         else
+          echo "This is the first action run."
           echo "first_run=true" >> $GITHUB_OUTPUT
         fi
 
@@ -242,6 +246,8 @@ runs:
           echo "Error: find_all_files script failed with exit code $?"
           exit 1
         }
+
+        echo "All files collected!"
 
     - name: Install Lokalise CLIv2
       if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
@@ -299,6 +305,8 @@ runs:
           exit 1
         fi
 
+        echo "All translation files pushed!"
+
         echo "files_uploaded=true" >> $GITHUB_OUTPUT
 
     - name: Mark Lokalise upload as complete
@@ -325,6 +333,7 @@ runs:
         else
           git tag -a "lokalise-upload-complete" -m "First Lokalise upload complete"
           git push origin "lokalise-upload-complete"
+          echo "Tag created!"
         fi
 
     - name: Tag last synced commit (per branch)
@@ -367,9 +376,11 @@ runs:
       shell: bash
       run: |
         echo "Verifying upload success..."
-        
+
         if [ "${{ steps.push-translation-files.outputs.files_uploaded }}" != "true" ]; then
+          echo "Nothing has been uploaded."
           echo "files_uploaded=false" >> $GITHUB_OUTPUT
         else
+          echo "Files have been uploaded."
           echo "files_uploaded=true" >> $GITHUB_OUTPUT
         fi
