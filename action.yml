@@ -305,7 +305,7 @@ runs:
           exit 1
         fi
 
-        echo "All translation files pushed!"
+        echo "All translation files have been pushed!"
 
         echo "files_uploaded=true" >> $GITHUB_OUTPUT
 
