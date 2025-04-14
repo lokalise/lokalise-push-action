@@ -309,67 +309,61 @@ runs:
 
         echo "files_uploaded=true" >> $GITHUB_OUTPUT
 
-    - name: Mark Lokalise upload as complete
-      if: steps.check-first-run.outputs.first_run == 'true' && steps.push-translation-files.outputs.files_uploaded == 'true'
+    - name: Mark Lokalise upload complete and update sync tag (if needed)
+      if: steps.push-translation-files.outputs.files_uploaded == 'true' && (steps.check-first-run.outputs.first_run == 'true' || inputs.use_tag_tracking == 'true')
       shell: bash
       env:
+        USE_TAG_TRACKING: "${{ inputs.use_tag_tracking }}"
+        FIRST_RUN: "${{ steps.check-first-run.outputs.first_run }}"
         GIT_USER_NAME: "${{ inputs.git_user_name }}"
         GIT_USER_EMAIL: "${{ inputs.git_user_email }}"
       run: |
         set -e
 
-        echo "Marking Lokalise upload as complete by creating a lokalise-upload-complete tag..."
+        echo "Processing tagging steps..."
 
+        echo "Configuring Git..."
         USER_NAME="${GIT_USER_NAME:-$GITHUB_ACTOR}"
         USER_EMAIL="${GIT_USER_EMAIL:-${USER_NAME}@users.noreply.github.com}"
-
-        git config --global user.name "$USER_NAME"
-        git config --global user.email "$USER_EMAIL"
-
-        git fetch --tags
-
-        if git ls-remote --tags origin | grep -q "refs/tags/lokalise-upload-complete$"; then
-          echo "Tag 'lokalise-upload-complete' already exists in remote."
-        else
-          git tag -a "lokalise-upload-complete" -m "First Lokalise upload complete"
-          git push origin "lokalise-upload-complete"
-          echo "Tag created!"
-        fi
-
-    - name: Tag last synced commit (per branch)
-      if: steps.push-translation-files.outputs.files_uploaded == 'true' && inputs.use_tag_tracking == 'true'
-      shell: bash
-      env:
-        GIT_USER_NAME: "${{ inputs.git_user_name }}"
-        GIT_USER_EMAIL: "${{ inputs.git_user_email }}"
-      run: |
-        set -e
-
-        TAG_NAME="lokalise-sync-${{ github.ref_name }}"
-        echo "Tag tracking is enabled, tagging last synced commit using '${TAG_NAME}'..."
-
-        USER_NAME="${GIT_USER_NAME:-$GITHUB_ACTOR}"
-        USER_EMAIL="${GIT_USER_EMAIL:-${USER_NAME}@users.noreply.github.com}"
-
         git config --global user.name "$USER_NAME"
         git config --global user.email "$USER_EMAIL"
 
         git fetch origin +refs/tags/*:refs/tags/*
 
-        if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
-          echo "Tag '${TAG_NAME}' exists locally. Deleting..."
-          git tag -d "$TAG_NAME"
+        # Part 1: Mark upload as complete if this is the first run.
+        if [ "$FIRST_RUN" == "true" ]; then
+          echo "FIRST_RUN is true: processing static tag 'lokalise-upload-complete'..."
+          if git ls-remote --tags origin | grep -q "refs/tags/lokalise-upload-complete$"; then
+            echo "Tag 'lokalise-upload-complete' already exists on remote."
+          else
+            git tag -a "lokalise-upload-complete" -m "First Lokalise upload complete"
+            git push origin "lokalise-upload-complete"
+            echo "Tag 'lokalise-upload-complete' created."
+          fi
         fi
 
-        # Check if tag exists remotely
-        if git ls-remote --tags origin | grep -q "refs/tags/${TAG_NAME}$"; then
-          echo "Tag '${TAG_NAME}' exists in remote. Deleting..."
-          git push --delete origin "$TAG_NAME"
+        # Part 2: Update branch-specific sync tag if tag tracking is enabled.
+        if [ "$USE_TAG_TRACKING" == "true" ]; then
+          TAG_NAME="lokalise-sync-${{ github.ref_name }}"
+          echo "Updating branch-specific tag '$TAG_NAME'..."
+          
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag '$TAG_NAME' exists locally; deleting local tag..."
+            git tag -d "$TAG_NAME"
+          fi
+
+          if git ls-remote --tags origin | grep -q "refs/tags/${TAG_NAME}$"; then
+            echo "Tag '$TAG_NAME' exists on remote; deleting remote tag..."
+            git push --delete origin "$TAG_NAME"
+          fi
+
+          echo "Creating new tag '$TAG_NAME' pointing to HEAD..."
+          git tag -a "$TAG_NAME" -m "Lokalise sync completed on branch '${{ github.ref_name }}'"
+          git push origin "$TAG_NAME"
+          echo "Branch-specific tag '$TAG_NAME' updated."
         fi
 
-        echo "Creating new tag '${TAG_NAME}' pointing to HEAD"
-        git tag -a "$TAG_NAME" -m "Lokalise sync completed on branch '${{ github.ref_name }}'"
-        git push origin "$TAG_NAME"
+        echo "Tagging step completed."
 
     - name: Verify file upload success
       id: check-files-upload
