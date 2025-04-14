@@ -132,12 +132,20 @@ runs:
       id: get-last-sync-sha
       shell: bash
       run: |
+        set -e
         git fetch --tags
+
         TAG_NAME="lokalise-sync-${{ github.ref_name }}"
+        echo "Looking for tag: $TAG_NAME"
+
         if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
-          echo "base_sha=$(git rev-parse $TAG_NAME)" >> $GITHUB_OUTPUT
+          TAG_SHA=$(git rev-parse "$TAG_NAME")
+          echo "Found tag '$TAG_NAME' pointing to commit: $TAG_SHA"
+          echo "base_sha=$TAG_SHA" >> $GITHUB_OUTPUT
         else
-          echo "base_sha=$(git rev-parse HEAD~1)" >> $GITHUB_OUTPUT
+          FALLBACK_SHA=$(git rev-parse HEAD~1)
+          echo "Tag '$TAG_NAME' not found. Falling back to HEAD~1: $FALLBACK_SHA"
+          echo "base_sha=$FALLBACK_SHA" >> $GITHUB_OUTPUT
         fi
 
     - name: Get changed files
@@ -147,7 +155,7 @@ runs:
       with:
         files_from_source_file: lok_action_paths_temp.txt
         separator: ','
-        base_sha: ${{ inputs.use_tag_tracking == 'true' && steps.get-last-sync-sha.base_sha || '' }}
+        base_sha: ${{ inputs.use_tag_tracking == 'true' && steps.get-last-sync-sha.outputs.base_sha || '' }}
         sha: ${{ inputs.use_tag_tracking == 'true' && github.sha || '' }}
 
     - name: Check if this is the first run on the branch
@@ -287,9 +295,14 @@ runs:
 
         TAG_NAME="lokalise-sync-${{ github.ref_name }}"
 
+        if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+          echo "Tag '${TAG_NAME}' exists locally. Deleting..."
+          git tag -d "$TAG_NAME"
+        fi
+
         # Check if tag exists remotely
         if git ls-remote --tags origin | grep -q "refs/tags/${TAG_NAME}$"; then
-          echo "Tag '${TAG_NAME}' already exists in remote. Deleting..."
+          echo "Tag '${TAG_NAME}' exists in remote. Deleting..."
           git push --delete origin "$TAG_NAME"
         fi
 
