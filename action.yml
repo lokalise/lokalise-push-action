@@ -127,6 +127,11 @@ runs:
           exit 1
         }
 
+    - name: Debug SHAs
+      run: |
+        echo "Base SHA: ${{ github.event.before }}"
+        echo "Head SHA: ${{ github.sha }}"
+
     - name: Get changed files
       if: inputs.rambo_mode != 'true'
       id: changed-files
