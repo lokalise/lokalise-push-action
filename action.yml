@@ -166,7 +166,7 @@ runs:
         echo "current_sha: ${{ github.sha }}"
 
         if [ "${{ steps.get-last-sync-sha.outputs.base_sha }}" = "${{ github.sha }}" ]; then
-          echo "No new commits since last sync. Exiting early."
+          echo "No new commits since last sync."
           echo "identical=true" >> $GITHUB_OUTPUT
         else
           echo "Commits differ, continuing."
