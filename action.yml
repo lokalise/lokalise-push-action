@@ -82,8 +82,8 @@ inputs:
     description: 'Optional Git email to use when tagging the initial Lokalise upload. Defaults to "<username>@users.noreply.github.com".'
     required: false
     default: ''
-  use_full_push_diff:
-    description: 'Compare against last known push instead of just the latest commit'
+  use_tag_tracking:
+    description: 'Use git tags to track last synced commit per branch'
     required: false
     default: false
 permissions:
@@ -127,22 +127,28 @@ runs:
           exit 1
         }
 
-    - name: Debug SHAs
+    - name: Get last sync tag SHA
+      if: inputs.rambo_mode != 'true' && inputs.use_tag_tracking == 'true'
+      id: get-last-sync-sha
       shell: bash
       run: |
-        echo "Base SHA: ${{ github.event.before }}"
-        echo "Head SHA: ${{ github.sha }}"
+        git fetch --tags
+        TAG_NAME="lokalise-sync-${{ github.ref_name }}"
+        if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+          echo "base_sha=$(git rev-parse $TAG_NAME)" >> $GITHUB_OUTPUT
+        else
+          echo "base_sha=$(git rev-parse HEAD~1)" >> $GITHUB_OUTPUT
+        fi
 
     - name: Get changed files
       if: inputs.rambo_mode != 'true'
       id: changed-files
-      # tj-actions/changed-files@v46.0.5
-      uses: tj-actions/changed-files@db731a131ccd81ed52a3d463b6d2a4b2856c7ec9
+      uses: tj-actions/changed-files@v46.0.5
       with:
         files_from_source_file: lok_action_paths_temp.txt
         separator: ','
-        base_sha: ${{ inputs.use_full_push_diff == 'true' && github.event.before || '' }}
-        sha: ${{ inputs.use_full_push_diff == 'true' && github.sha || '' }}
+        base_sha: ${{ inputs.use_tag_tracking == 'true' && steps.get-last-sync-sha.base_sha || '' }}
+        sha: ${{ inputs.use_tag_tracking == 'true' && github.sha || '' }}
 
     - name: Check if this is the first run on the branch
       id: check-first-run
@@ -261,6 +267,35 @@ runs:
           git tag -a "lokalise-upload-complete" -m "First Lokalise upload complete"
           git push origin "lokalise-upload-complete"
         fi
+
+    - name: Tag last synced commit (per branch)
+      if: steps.push-translation-files.outputs.files_uploaded == 'true' && inputs.use_tag_tracking == 'true'
+      shell: bash
+      env:
+        GIT_USER_NAME: "${{ inputs.git_user_name }}"
+        GIT_USER_EMAIL: "${{ inputs.git_user_email }}"
+      run: |
+        set -e
+
+        USER_NAME="${GIT_USER_NAME:-$GITHUB_ACTOR}"
+        USER_EMAIL="${GIT_USER_EMAIL:-${USER_NAME}@users.noreply.github.com}"
+
+        git config --global user.name "$USER_NAME"
+        git config --global user.email "$USER_EMAIL"
+
+        git fetch --tags
+
+        TAG_NAME="lokalise-sync-${{ github.ref_name }}"
+
+        # Check if tag exists remotely
+        if git ls-remote --tags origin | grep -q "refs/tags/${TAG_NAME}$"; then
+          echo "Tag '${TAG_NAME}' already exists in remote. Deleting..."
+          git push --delete origin "$TAG_NAME"
+        fi
+
+        echo "Creating new tag '${TAG_NAME}' pointing to HEAD"
+        git tag -a "$TAG_NAME" -m "Lokalise sync completed on branch '${{ github.ref_name }}'"
+        git push origin "$TAG_NAME"
 
     - name: Verify file upload success
       id: check-files-upload
