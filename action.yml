@@ -143,15 +143,41 @@ runs:
           echo "Found tag '$TAG_NAME' pointing to commit: $TAG_SHA"
           echo "base_sha=$TAG_SHA" >> $GITHUB_OUTPUT
         else
-          FALLBACK_SHA=$(git rev-parse HEAD~1)
-          echo "Tag '$TAG_NAME' not found. Falling back to HEAD~1: $FALLBACK_SHA"
-          echo "base_sha=$FALLBACK_SHA" >> $GITHUB_OUTPUT
+          echo "Tag not found. Attempting fallback to HEAD~1..."
+
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            FALLBACK_SHA=$(git rev-parse HEAD~1)
+            echo "Fallback SHA resolved: $FALLBACK_SHA"
+            echo "base_sha=$FALLBACK_SHA" >> $GITHUB_OUTPUT
+          else
+            ROOT_SHA=$(git rev-parse HEAD)
+            echo "Only one commit in history. Using HEAD: $ROOT_SHA"
+            echo "base_sha=$ROOT_SHA" >> $GITHUB_OUTPUT
+          fi
+        fi
+
+    - name: Skip if no new commits since last sync
+      if: inputs.rambo_mode != 'true' && inputs.use_tag_tracking == 'true'
+      id: check-sha
+      shell: bash
+      run: |
+        echo "Comparing base SHA and HEAD..."
+        echo "base_sha: ${{ steps.get-last-sync-sha.outputs.base_sha }}"
+        echo "current_sha: ${{ github.sha }}"
+
+        if [ "${{ steps.get-last-sync-sha.outputs.base_sha }}" = "${{ github.sha }}" ]; then
+          echo "No new commits since last sync. Exiting early."
+          echo "identical=true" >> $GITHUB_OUTPUT
+        else
+          echo "Commits differ, continuing."
+          echo "identical=false" >> $GITHUB_OUTPUT
         fi
 
     - name: Get changed files
-      if: inputs.rambo_mode != 'true'
+      if: inputs.rambo_mode != 'true' && (inputs.use_tag_tracking != 'true' || steps.check-sha.outputs.identical != 'true')
       id: changed-files
-      uses: tj-actions/changed-files@v46.0.5
+      # tj-actions/changed-files@v46.0.5
+      uses: tj-actions/changed-files@db731a131ccd81ed52a3d463b6d2a4b2856c7ec9
       with:
         files_from_source_file: lok_action_paths_temp.txt
         separator: ','
@@ -171,7 +197,10 @@ runs:
         fi
 
     - name: Find all translation files
-      if: inputs.rambo_mode == 'true' || (steps.changed-files.outputs.any_changed == 'false' && steps.check-first-run.outputs.first_run == 'true')
+      if: |
+        inputs.rambo_mode == 'true' ||
+        (inputs.use_tag_tracking == 'true' && steps.check-sha.outputs.identical == 'true' && steps.check-first-run.outputs.first_run == 'true') ||
+        (inputs.use_tag_tracking != 'true' && steps.changed-files.outputs.any_changed == 'false' && steps.check-first-run.outputs.first_run == 'true')
       id: find-files
       shell: bash
       env:
@@ -253,7 +282,7 @@ runs:
         echo "files_uploaded=true" >> $GITHUB_OUTPUT
 
     - name: Mark Lokalise upload as complete
-      if: steps.check-first-run.outputs.first_run == 'true'
+      if: steps.check-first-run.outputs.first_run == 'true' && steps.push-translation-files.outputs.files_uploaded == 'true'
       shell: bash
       env:
         GIT_USER_NAME: "${{ inputs.git_user_name }}"
