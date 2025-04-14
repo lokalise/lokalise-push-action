@@ -210,7 +210,7 @@ runs:
       if: |
         inputs.rambo_mode == 'true' ||
         (inputs.use_tag_tracking == 'true' && steps.check-sha.outputs.identical == 'true' && steps.check-first-run.outputs.first_run == 'true') ||
-        (inputs.use_tag_tracking != 'true' && steps.changed-files.outputs.any_changed == 'false' && steps.check-first-run.outputs.first_run == 'true')
+        (steps.changed-files.outputs.any_changed == 'false' && steps.check-first-run.outputs.first_run == 'true')
       id: find-files
       shell: bash
       env:
