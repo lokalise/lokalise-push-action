@@ -133,7 +133,7 @@ runs:
       shell: bash
       run: |
         set -e
-        git fetch --tags
+        git fetch origin +refs/tags/*:refs/tags/*
 
         TAG_NAME="lokalise-sync-${{ github.ref_name }}"
         echo "Looking for tag: $TAG_NAME"
