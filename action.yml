@@ -171,7 +171,7 @@ runs:
         echo "base_sha: ${{ steps.get-last-sync-sha.outputs.base_sha }}"
         echo "current_sha: ${{ github.sha }}"
 
-        if [ "${{ steps.get-last-sync-sha.outputs.base_sha }}" = "${{ github.sha }}" ]; then
+        if [ "${{ steps.get-last-sync-sha.outputs.base_sha }}" == "${{ github.sha }}" ]; then
           echo "No new commits since last sync."
           echo "identical=true" >> $GITHUB_OUTPUT
         else
@@ -226,11 +226,11 @@ runs:
 
         echo "Collecting all translation files..."
 
-        if [ "${{ inputs.rambo_mode }}" = "true" ]; then
+        if [ "${{ inputs.rambo_mode }}" == "true" ]; then
           echo "Rambo mode is enabled: uploading all files regardless of changes."
-        elif [ "${{ inputs.use_tag_tracking }}" = "true" ] && [ "${{ steps.check-sha.outputs.identical }}" = "true" ] && [ "${{ steps.check-first-run.outputs.first_run }}" = "true" ]; then
+        elif [ "${{ inputs.use_tag_tracking }}" == "true" ] && [ "${{ steps.check-sha.outputs.identical }}" == "true" ] && [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ]; then
           echo "No new commits since last sync, but this is the first action run: uploading all files."
-        elif [ "${{ inputs.use_tag_tracking }}" != "true" ] && [ "${{ steps.changed-files.outputs.any_changed }}" = "false" ] && [ "${{ steps.check-first-run.outputs.first_run }}" = "true" ]; then
+        elif [ "${{ inputs.use_tag_tracking }}" != "true" ] && [ "${{ steps.changed-files.outputs.any_changed }}" == "false" ] && [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ]; then
           echo "No file changes detected, and it's the first action run: uploading all files."
         else
           echo "Not sure how we got here, but collecting all files anyway. This is probably unexpected, check your workflow."
@@ -277,7 +277,7 @@ runs:
         echo "Pushing files to Lokalise..."
 
         if [ "${{ inputs.rambo_mode }}" == "true" ] || \
-          ( [ "${{ steps.changed-files.outputs.any_changed }}" == "false" ] && [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ] ); then
+          ( [ "${{ steps.changed-files.outputs.any_changed }}" != "true" ] && [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ] ); then
           FILES="${{ steps.find-files.outputs.ALL_FILES }}"
         else
           FILES="${{ steps.changed-files.outputs.all_changed_files }}"
