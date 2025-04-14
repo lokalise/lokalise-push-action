@@ -332,7 +332,7 @@ runs:
 
         # Part 1: Mark upload as complete if this is the first run.
         if [ "$FIRST_RUN" == "true" ]; then
-          echo "FIRST_RUN is true: processing static tag 'lokalise-upload-complete'..."
+          echo "This is the first run: processing static tag 'lokalise-upload-complete'..."
           if git ls-remote --tags origin | grep -q "refs/tags/lokalise-upload-complete$"; then
             echo "Tag 'lokalise-upload-complete' already exists on remote."
           else
