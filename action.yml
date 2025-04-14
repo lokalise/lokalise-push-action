@@ -82,6 +82,10 @@ inputs:
     description: 'Optional Git email to use when tagging the initial Lokalise upload. Defaults to "<username>@users.noreply.github.com".'
     required: false
     default: ''
+  use_full_push_diff:
+    description: 'Compare against last known push instead of just the latest commit'
+    required: false
+    default: false
 permissions:
   contents: write
 branding:
@@ -131,6 +135,8 @@ runs:
       with:
         files_from_source_file: lok_action_paths_temp.txt
         separator: ','
+        base_sha: ${{ inputs.use_full_push_diff == 'true' && github.event.before || '' }}
+        sha: ${{ inputs.use_full_push_diff == 'true' && github.sha || '' }}
 
     - name: Check if this is the first run on the branch
       id: check-first-run
