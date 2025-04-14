@@ -139,7 +139,7 @@ runs:
         echo "Looking for tag: $TAG_NAME"
 
         if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
-          TAG_SHA=$(git rev-parse "$TAG_NAME")
+          TAG_SHA=$(git rev-list -n 1 "$TAG_NAME")
           echo "Found tag '$TAG_NAME' pointing to commit: $TAG_SHA"
           echo "base_sha=$TAG_SHA" >> $GITHUB_OUTPUT
         else
