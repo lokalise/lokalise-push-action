@@ -272,7 +272,7 @@ runs:
       # lokalise/install-lokalise-cli-v2@v1.2.0
       uses: lokalise/install-lokalise-cli-v2@0aadabc1b6dfecb602435c1d52fdbfd828c1af01
       with:
-        target-version: 3.1.2
+        target-version: 3.1.3
 
     - name: Push translation files to Lokalise
       if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
