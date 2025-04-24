@@ -33,7 +33,7 @@ inputs:
   flat_naming:
     description: 'Use flat naming convention (true/false). If true, expects files like locales/en.json instead of locales/en/file.json'
     required: false
-    default: false
+    default: 'false'
   name_pattern:
     description: 'Custom pattern for naming translation files. Overrides default language-based naming. Must include both filename and extension if applicable (e.g., "custom_name.json" or "**.yaml"). Default behavior is used if not set.'
     required: false
@@ -41,19 +41,19 @@ inputs:
   skip_tagging:
     description: 'Do not assign tags to the uploaded translation keys on Lokalise'
     required: false
-    default: false
+    default: 'false'
   skip_polling:
     description: 'Do not wait for the upload operation to be marked as completed on Lokalise'
     required: false
-    default: false
+    default: 'false'
   skip_default_flags:
     description: 'Do not set any extra flags for the upload command'
     required: false
-    default: false
+    default: 'false'
   rambo_mode:
     description: 'Always upload all translation files for the base language regardless of changes'
     required: false
-    default: false
+    default: 'false'
   max_retries:
     description: 'Maximum number of retries on rate limit errors'
     required: false
@@ -85,7 +85,7 @@ inputs:
   use_tag_tracking:
     description: 'Use git tags to track last synced commit per branch'
     required: false
-    default: false
+    default: 'false'
 permissions:
   contents: write
 branding:
@@ -114,7 +114,7 @@ runs:
         NAME_PATTERN: "${{ inputs.name_pattern }}"
         PLATFORM: "${{ inputs.os_platform }}"
       run: |
-        set -e
+        set -euo pipefail
 
         echo "Setting translation paths..."
 
@@ -124,7 +124,7 @@ runs:
           exit 1
         fi
         chmod +x "$CMD_PATH"
-        $("$CMD_PATH") || {
+        "$CMD_PATH" || {
           echo "Error: store_translation_paths script failed with exit code $?"
           exit 1
         }
@@ -136,14 +136,14 @@ runs:
       id: get-last-sync-sha
       shell: bash
       run: |
-        set -e
+        set -euo pipefail
 
         TAG_NAME="lokalise-sync-${{ github.ref_name }}"
         echo "Looking for tag: $TAG_NAME"
 
         git fetch --quiet origin "tag:$TAG_NAME" 2>/dev/null || true
 
-        if TAG_SHA=$(git rev-list -n1 "$TAG_NAME" 2>/dev/null); then
+        if TAG_SHA=$(git rev-list -n1 "$TAG_NAME" 2>/dev/null || true); then
           echo "Found tag '$TAG_NAME': $TAG_SHA"
           echo "base_sha=$TAG_SHA" >> $GITHUB_OUTPUT
           exit 0
@@ -166,7 +166,7 @@ runs:
       id: check-sha
       shell: bash
       run: |
-        set -e
+        set -euo pipefail
 
         BASE_SHA="${{ steps.get-last-sync-sha.outputs.base_sha }}"
         CUR_SHA="${{ github.sha }}"
@@ -197,7 +197,7 @@ runs:
       id: check-first-run
       shell: bash
       run: |
-        set -e
+        set -euo pipefail
 
         TAG_NAME="lokalise-upload-complete"
         echo "Checking if this is the first action run... (tag: $TAG_NAME)"
@@ -239,7 +239,7 @@ runs:
         NAME_PATTERN: "${{ inputs.name_pattern }}"
         PLATFORM: "${{ inputs.os_platform }}"
       run: |
-        set -e
+        set -euo pipefail
 
         echo "Collecting all translation files..."
 
@@ -266,7 +266,7 @@ runs:
           exit 1
         fi
         chmod +x "$CMD_PATH"
-        $("$CMD_PATH") || {
+        "$CMD_PATH" || {
           echo "Error: find_all_files script failed with exit code $?"
           exit 1
         }
@@ -296,7 +296,7 @@ runs:
         SKIP_DEFAULT_FLAGS: ${{ inputs.skip_default_flags }}
         PLATFORM: "${{ inputs.os_platform }}"
       run: |
-        set -e
+        set -euo pipefail
 
         echo "Pushing files to Lokalise..."
 
@@ -322,7 +322,7 @@ runs:
         set +e
         echo "$FILES" | tr ',' '\n' | xargs -P 6 -I {} "$CMD_PATH" "{}" "${{ inputs.project_id }}" "${{ inputs.api_token }}"
         xargs_exit_code=$?
-        set -e
+        set -euo pipefail
 
         if [ $xargs_exit_code -ne 0 ]; then
           echo "File upload failed"
@@ -343,7 +343,7 @@ runs:
         GIT_USER_EMAIL: "${{ inputs.git_user_email }}"
         TAG_SYNC_NAME: "lokalise-sync-${{ github.ref_name }}"
       run: |
-        set -e
+        set -euo pipefail
 
         echo "Lokalise tagging..."
 
