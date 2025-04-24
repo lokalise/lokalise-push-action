@@ -74,6 +74,9 @@ additional_params: |
 - `skip_polling` — Skips waiting for the upload operation to complete. When set to `true`, the `upload_poll_timeout` parameter is ignored. Defaults to `false`.
 - `skip_default_flags` — Prevents the action from setting additional default flags for the `upload` command. By default, the action includes `--replace-modified --include-path --distinguish-by-file`. When `skip_default_flags` is `true`, these flags are not added. Defaults to `false`.
 - `rambo_mode` — Always upload all translation files for the base language regardless of changes. Set this to `true` to bypass change detection and force a full upload of all base language translation files. Defaults to `false`.
+- `use_tag_tracking` — Enables branch-specific sync tracking using Git tags. When set to `true`, the action creates a unique tag for each branch to remember the last successfully synced commit. On subsequent runs, it compares the current commit against the tagged commit to detect all changes since the last successful sync — regardless of how many commits occurred in between. This feature is still experimental.
+  + By default, when `use_tag_tracking` is `false`, the action compares just the last two commits (`HEAD` and `HEAD~1`) to determine what changed. Enabling `use_tag_tracking` allows the action to detect broader changes across multiple commits and ensure nothing gets skipped during uploads.
+  + This parameter has no effect if the `rambo_mode` is set to `true`.
 - `max_retries` — Maximum number of retries on rate limit errors (HTTP 429). Defaults to `3`.
 - `sleep_on_retry` — Number of seconds to sleep before retrying on rate limit errors. Defaults to `1`.
 - `upload_timeout` — Timeout for the upload operation, in seconds. Defaults to `120`.
@@ -103,20 +106,27 @@ When triggered, this action follows a multi-step process to detect changes in tr
 
 1. **Detect changed files**:
    - The action identifies all changed translation files for the base language specified under the `translations_path`.
-   - **Important**: Changes are detected **only between the latest commit and the one preceding it**. This ensures that the action processes incremental changes rather than scanning the entire repository.
+   - By default, changes are detected **only between the latest commit and the one preceding it**.
+   - You can enable detection across multiple commits using the `use_tag_tracking` option:
+     - When `use_tag_tracking` is set to `true`, the action compares the current commit with the last known synced commit on the branch (stored as a Git tag).
+     - This ensures that any files changed across **multiple previous commits** are still uploaded, even when the action is run manually or after a batch push.
 
 2. **Upload modified files**:
    - Any detected changes are uploaded to the specified Lokalise project in parallel, with up to six requests being processed simultaneously.
-   - Each translation key is tagged with the name of the branch that triggered the workflow for better traceability in Lokalise.
+   - Each translation key is tagged with the name of the branch that triggered the workflow for better traceability in Lokalise. This also helps pulling your files back using the lokalise-pull action.
 
 3. **Handle initial push**:
-   - If no changes are detected between the last two commits, the action determines if it is running for the first time on the branch:
+   - If no changes are detected, the action determines if it is running for the first time on the branch:
      - **First run**: The action checks for the presence of a `lokalise-upload-complete` tag.
        - If the tag is **not found**, it performs an initial upload, processing all translation files for the base language. This also happens when the `rambo_mode` is set to `true`.
        - After successfully uploading all files, the action creates a `lokalise-upload-complete` tag to mark the initial setup as complete.
-     - **Subsequent runs**: If the tag is found, the action exits without uploading any files, as the initial push has already been completed.
+     - **Subsequent runs**: If the tag is found and no new changes are detected (or no new commits when using `use_tag_tracking`), the action exits early without uploading any files.
 
-4. **Mark completion**:
+4. **Track synced commits per branch** (optional):
+   - When `use_tag_tracking` is enabled and files are uploaded, the action creates or updates a branch-specific tag named `lokalise-sync-<branch-name>` pointing to the latest synced commit.
+   - This tag is used on future runs to determine the delta of changed files, preventing missed uploads.
+
+5. **Mark completion**:
    - For the first run on the branch, after completing the initial upload, the action pushes the `lokalise-upload-complete` tag to the remote repository.
    - **Recommendation**: Pull the changes to your local repository to ensure the tag is included in your local Git history.
 

@@ -33,7 +33,7 @@ inputs:
   flat_naming:
     description: 'Use flat naming convention (true/false). If true, expects files like locales/en.json instead of locales/en/file.json'
     required: false
-    default: false
+    default: 'false'
   name_pattern:
     description: 'Custom pattern for naming translation files. Overrides default language-based naming. Must include both filename and extension if applicable (e.g., "custom_name.json" or "**.yaml"). Default behavior is used if not set.'
     required: false
@@ -41,19 +41,19 @@ inputs:
   skip_tagging:
     description: 'Do not assign tags to the uploaded translation keys on Lokalise'
     required: false
-    default: false
+    default: 'false'
   skip_polling:
     description: 'Do not wait for the upload operation to be marked as completed on Lokalise'
     required: false
-    default: false
+    default: 'false'
   skip_default_flags:
     description: 'Do not set any extra flags for the upload command'
     required: false
-    default: false
+    default: 'false'
   rambo_mode:
     description: 'Always upload all translation files for the base language regardless of changes'
     required: false
-    default: false
+    default: 'false'
   max_retries:
     description: 'Maximum number of retries on rate limit errors'
     required: false
@@ -82,6 +82,10 @@ inputs:
     description: 'Optional Git email to use when tagging the initial Lokalise upload. Defaults to "<username>@users.noreply.github.com".'
     required: false
     default: ''
+  use_tag_tracking:
+    description: 'Use git tags to track last synced commit per branch'
+    required: false
+    default: 'false'
 permissions:
   contents: write
 branding:
@@ -110,7 +114,9 @@ runs:
         NAME_PATTERN: "${{ inputs.name_pattern }}"
         PLATFORM: "${{ inputs.os_platform }}"
       run: |
-        set -e
+        set -euo pipefail
+
+        echo "Setting translation paths..."
 
         CMD_PATH="${{ github.action_path }}/bin/store_translation_paths_${PLATFORM}"
         if [ ! -f "$CMD_PATH" ]; then
@@ -118,34 +124,110 @@ runs:
           exit 1
         fi
         chmod +x "$CMD_PATH"
-        $("$CMD_PATH") || {
+        "$CMD_PATH" || {
           echo "Error: store_translation_paths script failed with exit code $?"
           exit 1
         }
 
+        echo "Translations paths have been set!"
+
+    - name: Get last sync tag SHA
+      if: inputs.rambo_mode != 'true' && inputs.use_tag_tracking == 'true'
+      id: get-last-sync-sha
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        TAG_NAME="lokalise-sync-${{ github.ref_name }}"
+        echo "Looking for tag: $TAG_NAME"
+
+        git fetch --quiet origin "tag:$TAG_NAME" 2>/dev/null || true
+
+        if TAG_SHA=$(git rev-list -n1 "$TAG_NAME" 2>/dev/null); then
+          echo "Found tag '$TAG_NAME': $TAG_SHA"
+          echo "base_sha=$TAG_SHA" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        echo "Tag not found. Falling back to HEAD~1..."
+
+        if git rev-parse HEAD~1 >/dev/null 2>&1; then
+          FALLBACK_SHA=$(git rev-parse HEAD~1)
+          echo "Fallback SHA resolved: $FALLBACK_SHA"
+          echo "base_sha=$FALLBACK_SHA" >> $GITHUB_OUTPUT
+        else
+          ROOT_SHA=$(git rev-parse HEAD)
+          echo "Only one commit in history. Using HEAD: $ROOT_SHA"
+          echo "base_sha=$ROOT_SHA" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Skip if no new commits since last sync
+      if: inputs.rambo_mode != 'true' && inputs.use_tag_tracking == 'true'
+      id: check-sha
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        BASE_SHA="${{ steps.get-last-sync-sha.outputs.base_sha }}"
+        CUR_SHA="${{ github.sha }}"
+
+        echo "base_sha: $BASE_SHA"
+        echo "current_sha: $CUR_SHA"
+
+        if [[ -n "$BASE_SHA" && "$BASE_SHA" == "$CUR_SHA" ]]; then
+          echo "No new commits since last sync – skipping diff."
+          echo "identical=true" >> $GITHUB_OUTPUT
+        else
+          echo "Commits differ (or base_sha empty) – continue."
+          echo "identical=false" >> $GITHUB_OUTPUT
+        fi
+
     - name: Get changed files
-      if: inputs.rambo_mode != 'true'
+      if: inputs.rambo_mode != 'true' && (inputs.use_tag_tracking != 'true' || steps.check-sha.outputs.identical != 'true')
       id: changed-files
       # tj-actions/changed-files@v46.0.5
       uses: tj-actions/changed-files@db731a131ccd81ed52a3d463b6d2a4b2856c7ec9
       with:
         files_from_source_file: lok_action_paths_temp.txt
         separator: ','
+        base_sha: ${{ inputs.use_tag_tracking == 'true' && steps.get-last-sync-sha.outputs.base_sha || '' }}
+        sha: ${{ inputs.use_tag_tracking == 'true' && github.sha || '' }}
 
     - name: Check if this is the first run on the branch
       id: check-first-run
       shell: bash
       run: |
-        set -e
+        set -euo pipefail
 
-        if git rev-parse "refs/tags/lokalise-upload-complete" >/dev/null 2>&1; then
+        TAG_NAME="lokalise-upload-complete"
+        echo "Checking if this is the first action run... (tag: $TAG_NAME)"
+
+        git fetch --quiet origin "tag:$TAG_NAME" 2>/dev/null || true
+
+        if git rev-list -n1 "$TAG_NAME" >/dev/null 2>&1; then
+          echo "This is not the first action run."
           echo "first_run=false" >> $GITHUB_OUTPUT
         else
+          echo "This is the first action run."
           echo "first_run=true" >> $GITHUB_OUTPUT
         fi
 
     - name: Find all translation files
-      if: inputs.rambo_mode == 'true' || (steps.changed-files.outputs.any_changed == 'false' && steps.check-first-run.outputs.first_run == 'true')
+      if: |
+        inputs.rambo_mode == 'true' ||
+        (
+          inputs.use_tag_tracking == 'true' &&
+          steps.check-first-run.outputs.first_run == 'true' &&
+          (
+            steps.check-sha.outputs.identical == 'true' ||
+            steps.changed-files.outputs.any_changed == 'false'
+          )
+        ) ||
+        (
+          inputs.use_tag_tracking != 'true' &&
+          steps.changed-files.outputs.any_changed == 'false' &&
+          steps.check-first-run.outputs.first_run == 'true'
+        )
       id: find-files
       shell: bash
       env:
@@ -157,25 +239,46 @@ runs:
         NAME_PATTERN: "${{ inputs.name_pattern }}"
         PLATFORM: "${{ inputs.os_platform }}"
       run: |
-        set -e
-        
+        set -euo pipefail
+
+        echo "Collecting all translation files..."
+
+        if [ "${{ inputs.rambo_mode }}" == "true" ]; then
+          echo "Rambo mode is enabled: uploading all files regardless of changes."
+
+        elif [ "${{ inputs.use_tag_tracking }}" == "true" ] && \
+            [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ] && \
+            { [ "${{ steps.check-sha.outputs.identical }}" == "true" ] || [ "${{ steps.changed-files.outputs.any_changed }}" == "false" ]; }; then
+          echo "Either no new commits or no file changes detected, and it's the first action run: uploading all files."
+
+        elif [ "${{ inputs.use_tag_tracking }}" != "true" ] && \
+            [ "${{ steps.changed-files.outputs.any_changed }}" == "false" ] && \
+            [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ]; then
+          echo "No file changes detected, and it's the first action run: uploading all files."
+
+        else
+          echo "Not sure how we got here, but collecting all files anyway. This is probably unexpected, check your workflow."
+        fi
+
         CMD_PATH="${{ github.action_path }}/bin/find_all_files_${PLATFORM}"
         if [ ! -f "$CMD_PATH" ]; then
           echo "Error: Binary for platform '${PLATFORM}' not found!"
           exit 1
         fi
         chmod +x "$CMD_PATH"
-        $("$CMD_PATH") || {
+        "$CMD_PATH" || {
           echo "Error: find_all_files script failed with exit code $?"
           exit 1
         }
+
+        echo "All files collected!"
 
     - name: Install Lokalise CLIv2
       if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
       # lokalise/install-lokalise-cli-v2@v1.2.0
       uses: lokalise/install-lokalise-cli-v2@0aadabc1b6dfecb602435c1d52fdbfd828c1af01
       with:
-        target-version: 3.1.2
+        target-version: 3.1.3
 
     - name: Push translation files to Lokalise
       if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
@@ -193,10 +296,12 @@ runs:
         SKIP_DEFAULT_FLAGS: ${{ inputs.skip_default_flags }}
         PLATFORM: "${{ inputs.os_platform }}"
       run: |
-        set -e
+        set -euo pipefail
+
+        echo "Pushing files to Lokalise..."
 
         if [ "${{ inputs.rambo_mode }}" == "true" ] || \
-          ( [ "${{ steps.changed-files.outputs.any_changed }}" == "false" ] && [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ] ); then
+          ( [ "${{ steps.changed-files.outputs.any_changed }}" != "true" ] && [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ] ); then
           FILES="${{ steps.find-files.outputs.ALL_FILES }}"
         else
           FILES="${{ steps.changed-files.outputs.all_changed_files }}"
@@ -217,45 +322,75 @@ runs:
         set +e
         echo "$FILES" | tr ',' '\n' | xargs -P 6 -I {} "$CMD_PATH" "{}" "${{ inputs.project_id }}" "${{ inputs.api_token }}"
         xargs_exit_code=$?
-        set -e
+        set -euo pipefail
 
         if [ $xargs_exit_code -ne 0 ]; then
           echo "File upload failed"
           exit 1
         fi
 
+        echo "All translation files have been pushed!"
+
         echo "files_uploaded=true" >> $GITHUB_OUTPUT
 
-    - name: Mark Lokalise upload as complete
-      if: steps.check-first-run.outputs.first_run == 'true'
+    - name: Mark Lokalise upload complete and update sync tag (if needed)
+      if: steps.push-translation-files.outputs.files_uploaded == 'true' && (steps.check-first-run.outputs.first_run == 'true' || inputs.use_tag_tracking == 'true')
       shell: bash
       env:
+        USE_TAG_TRACKING: "${{ inputs.use_tag_tracking }}"
+        FIRST_RUN: "${{ steps.check-first-run.outputs.first_run }}"
         GIT_USER_NAME: "${{ inputs.git_user_name }}"
         GIT_USER_EMAIL: "${{ inputs.git_user_email }}"
+        TAG_SYNC_NAME: "lokalise-sync-${{ github.ref_name }}"
       run: |
-        set -e
+        set -euo pipefail
 
+        echo "Lokalise tagging..."
+
+        echo "Configuring Git..."
         USER_NAME="${GIT_USER_NAME:-$GITHUB_ACTOR}"
         USER_EMAIL="${GIT_USER_EMAIL:-${USER_NAME}@users.noreply.github.com}"
-
         git config --global user.name "$USER_NAME"
         git config --global user.email "$USER_EMAIL"
 
-        git fetch --tags
+        # Part 1: Mark upload as complete if this is the first run.
+        if [ "$FIRST_RUN" == "true" ]; then
+          git fetch --quiet origin "tag:lokalise-upload-complete" 2>/dev/null || true
 
-        if git ls-remote --tags origin | grep -q "refs/tags/lokalise-upload-complete$"; then
-          echo "Tag 'lokalise-upload-complete' already exists in remote."
-        else
-          git tag -a "lokalise-upload-complete" -m "First Lokalise upload complete"
-          git push origin "lokalise-upload-complete"
+          if git rev-list -n1 lokalise-upload-complete >/dev/null 2>&1; then
+            echo "Tag already there, skipping."
+          else
+            git tag -a lokalise-upload-complete -m "Initial Lokalise upload completed"
+            git push origin lokalise-upload-complete
+            echo "Tag 'lokalise-upload-complete' created."
+          fi
         fi
+
+        # Part 2: Update branch-specific sync tag if tag tracking is enabled.
+        if [[ "$USE_TAG_TRACKING" == "true" ]]; then
+          echo "Updating branch sync tag '$TAG_SYNC_NAME'..."
+
+          git tag -d "$TAG_SYNC_NAME" 2>/dev/null || true
+          git push --quiet origin ":refs/tags/$TAG_SYNC_NAME" || true
+
+          git tag -a "$TAG_SYNC_NAME" -m "Lokalise sync completed on branch '$GITHUB_REF_NAME'"
+          git push origin "$TAG_SYNC_NAME"
+
+          echo "Tag '$TAG_SYNC_NAME' now points to $(git rev-parse HEAD)."
+        fi
+
+        echo "Tagging step completed."
 
     - name: Verify file upload success
       id: check-files-upload
       shell: bash
       run: |
+        echo "Verifying upload success..."
+
         if [ "${{ steps.push-translation-files.outputs.files_uploaded }}" != "true" ]; then
+          echo "Nothing has been uploaded."
           echo "files_uploaded=false" >> $GITHUB_OUTPUT
         else
+          echo "Files have been uploaded."
           echo "files_uploaded=true" >> $GITHUB_OUTPUT
         fi
