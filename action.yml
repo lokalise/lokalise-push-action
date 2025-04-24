@@ -141,7 +141,7 @@ runs:
         TAG_NAME="lokalise-sync-${{ github.ref_name }}"
         echo "Looking for tag: $TAG_NAME"
 
-        git fetch --quiet origin "tag:$TAG_NAME" || true
+        git fetch --quiet origin "tag:$TAG_NAME" 2>/dev/null || true
 
         if TAG_SHA=$(git rev-list -n1 "$TAG_NAME" 2>/dev/null); then
           echo "Found tag '$TAG_NAME': $TAG_SHA"
@@ -202,7 +202,7 @@ runs:
         TAG_NAME="lokalise-upload-complete"
         echo "Checking if this is the first action run... (tag: $TAG_NAME)"
 
-        git fetch --quiet origin "tag:$TAG_NAME" || true
+        git fetch --quiet origin "tag:$TAG_NAME" 2>/dev/null || true
 
         if git rev-list -n1 "$TAG_NAME" >/dev/null 2>&1; then
           echo "This is not the first action run."
@@ -355,7 +355,7 @@ runs:
 
         # Part 1: Mark upload as complete if this is the first run.
         if [ "$FIRST_RUN" == "true" ]; then
-          git fetch --quiet origin "tag:lokalise-upload-complete" || true
+          git fetch --quiet origin "tag:lokalise-upload-complete" 2>/dev/null || true
 
           if git rev-list -n1 lokalise-upload-complete >/dev/null 2>&1; then
             echo "Tag already there, skipping."
