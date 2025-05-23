@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -19,102 +20,92 @@ var binaries = []string{
 	"lokalise_upload",
 }
 
-func runCommand(cmd string, args []string) error {
-	command := exec.Command(cmd, args...)
-	command.Stdout = os.Stdout
-	command.Stderr = os.Stderr
-	if err := command.Run(); err != nil {
-		return fmt.Errorf("error running %s %v: %v", cmd, args, err)
-	}
-	return nil
-}
-
-func lint(path string) {
-	fmt.Println("Running go fmt...")
-	if err := runCommand("go", []string{"fmt", path}); err != nil {
-		fmt.Println(err)
-	}
-
-	if err := runCommand("gofumpt", []string{"-l", "-w", path}); err != nil {
-		fmt.Println(err)
-	}
-
-	fmt.Println("All checks completed!")
-}
-
 func main() {
-	// Define binDir relative to the project root
-	binDir := filepath.Join(getProjectRoot(), "bin")
+	projectRoot := getProjectRoot()
+	binDir := filepath.Join(projectRoot, "bin")
 
-	// Ensure the bin directory exists
+	// Create bin directory
 	if err := os.MkdirAll(binDir, os.ModePerm); err != nil {
 		log.Fatalf("Failed to create bin directory: %v", err)
 	}
 
-	// Install gofumpt if needed
-	if err := runCommand("go", []string{"install", "mvdan.cc/gofumpt@latest"}); err != nil {
-		fmt.Println(err)
+	// Ensure gofumpt is installed
+	if !checkCommand("gofumpt") {
+		if err := runCommand("go", []string{"install", "mvdan.cc/gofumpt@latest"}); err != nil {
+			log.Printf("Warning: failed to install gofumpt: %v", err)
+		}
 	}
 
 	for _, binaryName := range binaries {
-		fullPkgPath := filepath.Join(getProjectRoot(), rootSrcDir, binaryName)
+		fullPkgPath := filepath.Join(projectRoot, rootSrcDir, binaryName)
 
-		// Lint all .go files in the package
-		err := filepath.Walk(fullPkgPath, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if !info.IsDir() && filepath.Ext(path) == ".go" {
-				lint(path)
-			}
-			return nil
-		})
-		if err != nil {
-			fmt.Printf("Error walking through %s: %v\n", fullPkgPath, err)
-			continue
-		}
+		// Lint once per directory
+		lint(fullPkgPath)
 
-		// Build the binaries for all target platforms
+		// Build binaries
 		builtBinaries, err := buildBinary(fullPkgPath, binDir, binaryName)
 		if err != nil {
 			log.Printf("Build failed for %s: %v", binaryName, err)
 			continue
 		}
 
-		// Compress only Linux binaries with UPX (if available)
+		// Optional UPX compression for Linux targets
 		if checkCommand(upxAvailable) {
 			for _, binPath := range builtBinaries {
-				// Check if it's a Linux binary before compressing
 				if isLinuxBinary(binPath) {
 					if err := compressWithUPX(binPath); err != nil {
 						log.Printf("Compression failed for %s: %v", binPath, err)
 					}
-				} else {
-					fmt.Printf("Skipping UPX compression for macOS binary: %s\n", binPath)
 				}
 			}
 		} else {
 			fmt.Println("UPX not found; skipping compression.")
 		}
 
-		fmt.Printf("Build complete. Binaries located at %s\n", binDir)
+		fmt.Printf("Build complete for %s. Binaries at: %s\n", binaryName, binDir)
 	}
 }
 
-func isLinuxBinary(filePath string) bool {
-	return filepath.Ext(filePath) == "" && (filepath.Base(filePath) == "linux_amd64" || filepath.Base(filePath) == "linux_arm64")
+func runCommand(cmd string, args []string) error {
+	command := exec.Command(cmd, args...)
+	command.Stdout = os.Stdout
+	command.Stderr = os.Stderr
+	return command.Run()
 }
 
-// getProjectRoot returns the absolute path of the project root
+func lint(dir string) {
+	fmt.Printf("Running lint on %s...\n", dir)
+
+	// Run go fmt from inside the module
+	cmd := exec.Command("go", "fmt", "./...")
+	cmd.Dir = dir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Println("go fmt error:", err)
+	}
+
+	// Run gofumpt with dir path
+	if err := runCommand("gofumpt", []string{"-l", "-w", dir}); err != nil {
+		fmt.Println("gofumpt error:", err)
+	}
+
+	fmt.Println("Lint done.")
+}
+
+func isLinuxBinary(path string) bool {
+	return filepath.Ext(path) == "" &&
+		(strings.HasSuffix(path, "_linux_amd64") || strings.HasSuffix(path, "_linux_arm64"))
+}
+
 func getProjectRoot() string {
 	root, err := os.Getwd()
 	if err != nil {
-		log.Fatalf("Failed to get project root: %v", err)
+		log.Fatalf("Failed to get working directory: %v", err)
 	}
 	return root
 }
 
-// buildBinary compiles the Go binary for multiple platforms and returns the generated file paths
 func buildBinary(srcDir, outputDir, binaryName string) ([]string, error) {
 	targets := []struct {
 		goos   string
@@ -131,12 +122,10 @@ func buildBinary(srcDir, outputDir, binaryName string) ([]string, error) {
 
 	for _, target := range targets {
 		outputPath := filepath.Join(outputDir, binaryName+target.suffix)
-
-		fmt.Printf("Building binary for %s/%s -> %s\n", target.goos, target.goarch, outputPath)
+		fmt.Printf("Building for %s/%s -> %s\n", target.goos, target.goarch, outputPath)
 
 		ldflags := "-s -w -extldflags=-static"
 		cmd := exec.Command("go", "build", "-tags=netgo,osusergo", "-trimpath", "-ldflags", ldflags, "-o", outputPath)
-
 		cmd.Dir = srcDir
 		cmd.Env = append(os.Environ(),
 			"GOOS="+target.goos,
@@ -149,20 +138,17 @@ func buildBinary(srcDir, outputDir, binaryName string) ([]string, error) {
 		if err := cmd.Run(); err != nil {
 			return nil, fmt.Errorf("failed to build for %s/%s: %w", target.goos, target.goarch, err)
 		}
-
 		builtBinaries = append(builtBinaries, outputPath)
 	}
 
 	return builtBinaries, nil
 }
 
-// compressWithUPX compresses the binary with UPX, if available
 func compressWithUPX(binaryPath string) error {
-	fmt.Println("Compressing binary with UPX:", binaryPath)
+	fmt.Println("Compressing with UPX:", binaryPath)
 	return runCommand("upx", []string{"--best", "--lzma", binaryPath})
 }
 
-// checkCommand checks if a command is available on the system
 func checkCommand(name string) bool {
 	_, err := exec.LookPath(name)
 	return err == nil
