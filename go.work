@@ -1,0 +1,8 @@
+go 1.24.3
+
+use (
+	./src/find_all_files
+	./src/lokalise_upload
+	./src/store_translation_paths
+	./tools
+)
