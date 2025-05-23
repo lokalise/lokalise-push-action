@@ -1,9 +1,7 @@
-name: Test and build
+name: CI
 
 on:
   push:
-    tags:
-      - v[0-9]+.*
   workflow_dispatch:
 
 jobs:
@@ -18,21 +16,15 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version: '1.24'
+        cache: false
 
-    - name: Tidy and test
+    - name: Test
       run: |
         set -e
 
         for dir in src/*; do
           if [ -f "$dir/go.mod" ]; then
-            echo "Running go mod tidy in $dir"
-            (cd "$dir" && go mod tidy)
-
             echo "Running tests in $dir"
             (cd "$dir" && go test ./...)
           fi
         done
-
-    - name: Run build
-      run: |
-        go run tools/build-tool.go
