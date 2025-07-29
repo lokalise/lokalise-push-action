@@ -225,7 +225,7 @@ runs:
         ) ||
         (
           inputs.use_tag_tracking != 'true' &&
-          steps.changed-files.outputs.any_changed != 'false' &&
+          steps.changed-files.outputs.any_changed != 'true' &&
           steps.check-first-run.outputs.first_run == 'true'
         )
       id: find-files
