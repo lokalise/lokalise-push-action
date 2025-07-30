@@ -97,7 +97,7 @@ func findAllTranslationFiles(paths []string, flatNaming bool, baseLang, fileExt 
 			pattern := filepath.ToSlash(filepath.Join(path, namePattern))
 
 			// Use doublestar.Glob with the project root as the FS
-			matches, err := doublestar.Glob(os.DirFS("."), pattern, doublestar.WithCaseInsensitive())
+			matches, err := doublestar.Glob(os.DirFS("."), pattern)
 			if err != nil {
 				return nil, fmt.Errorf("error applying name pattern %s: %v", pattern, err)
 			}
