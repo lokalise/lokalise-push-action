@@ -106,12 +106,12 @@ func findAllTranslationFiles(paths []string, flatNaming bool, baseLang, fileExt 
 		} else if flatNaming {
 			// For flat naming, look for a single translation file named as baseLang.fileExt in the path
 			targetFile := filepath.Join(path, fmt.Sprintf("%s.%s", baseLang, fileExt))
-			if info, err := os.Stat(targetFile); err == nil && !info.IsDir() {
+
+			info, err := os.Stat(targetFile)
+			if err == nil && !info.IsDir() {
 				allFiles = append(allFiles, targetFile)
-			} else if err != nil {
-				if !os.IsNotExist(err) {
-					return nil, fmt.Errorf("error accessing file %s: %v", targetFile, err)
-				}
+			} else if err != nil && !os.IsNotExist(err) {
+				return nil, fmt.Errorf("error accessing file %s: %v", targetFile, err)
 			}
 		} else {
 			// For nested directories, look for a directory named baseLang and search for translation files within it
