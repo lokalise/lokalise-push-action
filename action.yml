@@ -141,24 +141,30 @@ runs:
         TAG_NAME="lokalise-sync-${{ github.ref_name }}"
         echo "Looking for tag: $TAG_NAME"
 
-        git fetch --quiet origin "tag:$TAG_NAME" 2>/dev/null || true
-
-        if TAG_SHA=$(git rev-list -n1 "$TAG_NAME" 2>/dev/null); then
-          echo "Found tag '$TAG_NAME': $TAG_SHA"
-          echo "base_sha=$TAG_SHA" >> $GITHUB_OUTPUT
-          exit 0
+        if git ls-remote --exit-code --refs --tags origin "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
+          echo "Tag '$TAG_NAME' found on remote."
+          
+          git fetch --quiet origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME" || true
+          TAG_SHA=$(git rev-list -n1 "$TAG_NAME" 2>/dev/null || echo "")
+          if [ -n "$TAG_SHA" ]; then
+            echo "Found tag '$TAG_NAME': $TAG_SHA"
+            echo "base_sha=$TAG_SHA" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Warning: tag exists on remote but could not resolve SHA locally."
+        else
+          echo "Tag '$TAG_NAME' not found on remote."
         fi
 
-        echo "Tag not found. Falling back to HEAD~1..."
-
+        echo "Falling back to HEAD~1..."
         if git rev-parse HEAD~1 >/dev/null 2>&1; then
           FALLBACK_SHA=$(git rev-parse HEAD~1)
           echo "Fallback SHA resolved: $FALLBACK_SHA"
-          echo "base_sha=$FALLBACK_SHA" >> $GITHUB_OUTPUT
+          echo "base_sha=$FALLBACK_SHA" >> "$GITHUB_OUTPUT"
         else
           ROOT_SHA=$(git rev-parse HEAD)
           echo "Only one commit in history. Using HEAD: $ROOT_SHA"
-          echo "base_sha=$ROOT_SHA" >> $GITHUB_OUTPUT
+          echo "base_sha=$ROOT_SHA" >> "$GITHUB_OUTPUT"
         fi
 
     - name: Skip if no new commits since last sync
@@ -202,14 +208,12 @@ runs:
         TAG_NAME="lokalise-upload-complete"
         echo "Checking if this is the first action run... (tag: $TAG_NAME)"
 
-        git fetch --quiet origin "tag:$TAG_NAME" 2>/dev/null || true
-
-        if git rev-list -n1 "$TAG_NAME" >/dev/null 2>&1; then
+        if git ls-remote --exit-code --refs --tags origin "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
           echo "This is not the first action run."
-          echo "first_run=false" >> $GITHUB_OUTPUT
+          echo "first_run=false" >> "$GITHUB_OUTPUT"
         else
           echo "This is the first action run."
-          echo "first_run=true" >> $GITHUB_OUTPUT
+          echo "first_run=true" >> "$GITHUB_OUTPUT"
         fi
 
     - name: Find all translation files
@@ -310,7 +314,7 @@ runs:
 
         if [ -z "$FILES" ]; then
           echo "No files to upload."
-          exit 1
+          exit 0
         fi
 
         CMD_PATH="${{ github.action_path }}/bin/lokalise_upload_${PLATFORM}"
@@ -355,29 +359,25 @@ runs:
         git config --global user.email "$USER_EMAIL"
 
         # Part 1: Mark upload as complete if this is the first run.
-        if [ "$FIRST_RUN" == "true" ]; then
-          git fetch --quiet origin "tag:lokalise-upload-complete" 2>/dev/null || true
-
-          if git rev-list -n1 lokalise-upload-complete >/dev/null 2>&1; then
-            echo "Tag already there, skipping."
+        if [ "$FIRST_RUN" = "true" ]; then
+          echo "Checking remote for 'lokalise-upload-complete'..."
+          if git ls-remote --exit-code --refs --tags origin refs/tags/lokalise-upload-complete >/dev/null 2>&1; then
+            echo "Tag exists on remote, skipping creation."
+            git fetch --quiet origin refs/tags/lokalise-upload-complete:refs/tags/lokalise-upload-complete || true
           else
-            git tag -a lokalise-upload-complete -m "Initial Lokalise upload completed"
-            git push origin lokalise-upload-complete
-            echo "Tag 'lokalise-upload-complete' created."
+            echo "Creating and pushing 'lokalise-upload-complete'..."
+            git tag -a lokalise-upload-complete -m "Initial Lokalise upload completed" || true
+            git push origin refs/tags/lokalise-upload-complete || true
+            echo "Tag 'lokalise-upload-complete' created (or push skipped on error)."
           fi
         fi
 
         # Part 2: Update branch-specific sync tag if tag tracking is enabled.
-        if [[ "$USE_TAG_TRACKING" == "true" ]]; then
+        if [ "$USE_TAG_TRACKING" = "true" ]; then
           echo "Updating branch sync tag '$TAG_SYNC_NAME'..."
-
-          git tag -d "$TAG_SYNC_NAME" 2>/dev/null || true
-          git push --quiet origin ":refs/tags/$TAG_SYNC_NAME" || true
-
-          git tag -a "$TAG_SYNC_NAME" -m "Lokalise sync completed on branch '$GITHUB_REF_NAME'"
-          git push origin "$TAG_SYNC_NAME"
-
-          echo "Tag '$TAG_SYNC_NAME' now points to $(git rev-parse HEAD)."
+          git tag -fa "$TAG_SYNC_NAME" -m "Lokalise sync completed on branch '$GITHUB_REF_NAME'" || true
+          git push --force origin "refs/tags/$TAG_SYNC_NAME" || true
+          echo "Tag '$TAG_SYNC_NAME' now points to $(git rev-parse HEAD || echo unknown)."
         fi
 
         echo "Tagging step completed."
