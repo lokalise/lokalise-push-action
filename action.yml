@@ -356,13 +356,11 @@ runs:
 
         # Part 1: Mark upload as complete if this is the first run.
         if [ "$FIRST_RUN" == "true" ]; then
-          git fetch --quiet origin "tag:lokalise-upload-complete" 2>/dev/null || true
-
-          if git rev-list -n1 lokalise-upload-complete >/dev/null 2>&1; then
+          if git ls-remote --tags origin lokalise-upload-complete | grep -q .; then
             echo "Tag already there, skipping."
           else
             git tag -a lokalise-upload-complete -m "Initial Lokalise upload completed"
-            git push origin lokalise-upload-complete
+            git push origin lokalise-upload-complete || true
             echo "Tag 'lokalise-upload-complete' created."
           fi
         fi
