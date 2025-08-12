@@ -182,10 +182,10 @@ runs:
 
         if [[ -n "$BASE_SHA" && "$BASE_SHA" == "$CUR_SHA" ]]; then
           echo "No new commits since last sync – skipping diff."
-          echo "identical=true" >> $GITHUB_OUTPUT
+          echo "identical=true" >> "$GITHUB_OUTPUT"
         else
           echo "Commits differ (or base_sha empty) – continue."
-          echo "identical=false" >> $GITHUB_OUTPUT
+          echo "identical=false" >> "$GITHUB_OUTPUT"
         fi
 
     - name: Get changed files
@@ -336,7 +336,7 @@ runs:
 
         echo "All translation files have been pushed!"
 
-        echo "files_uploaded=true" >> $GITHUB_OUTPUT
+        echo "files_uploaded=true" >> "$GITHUB_OUTPUT"
 
     - name: Mark Lokalise upload complete and update sync tag (if needed)
       if: steps.push-translation-files.outputs.files_uploaded == 'true' && (steps.check-first-run.outputs.first_run == 'true' || inputs.use_tag_tracking == 'true')
@@ -359,7 +359,7 @@ runs:
         git config --global user.email "$USER_EMAIL"
 
         # Part 1: Mark upload as complete if this is the first run.
-        if [ "$FIRST_RUN" = "true" ]; then
+        if [[ "$FIRST_RUN" == "true" ]]; then
           echo "Checking remote for 'lokalise-upload-complete'..."
           if git ls-remote --exit-code --refs --tags origin refs/tags/lokalise-upload-complete >/dev/null 2>&1; then
             echo "Tag exists on remote, skipping creation."
@@ -373,7 +373,7 @@ runs:
         fi
 
         # Part 2: Update branch-specific sync tag if tag tracking is enabled.
-        if [ "$USE_TAG_TRACKING" = "true" ]; then
+        if [[ "$USE_TAG_TRACKING" == "true" ]]; then
           echo "Updating branch sync tag '$TAG_SYNC_NAME'..."
           git tag -fa "$TAG_SYNC_NAME" -m "Lokalise sync completed on branch '$GITHUB_REF_NAME'" || true
           git push --force origin "refs/tags/$TAG_SYNC_NAME" || true
@@ -390,8 +390,8 @@ runs:
 
         if [ "${{ steps.push-translation-files.outputs.files_uploaded }}" != "true" ]; then
           echo "Nothing has been uploaded."
-          echo "files_uploaded=false" >> $GITHUB_OUTPUT
+          echo "files_uploaded=false" >> "$GITHUB_OUTPUT"
         else
           echo "Files have been uploaded."
-          echo "files_uploaded=true" >> $GITHUB_OUTPUT
+          echo "files_uploaded=true" >> "$GITHUB_OUTPUT"
         fi
