@@ -123,7 +123,7 @@ runs:
           echo "Error: Binary for platform '${PLATFORM}' not found!"
           exit 1
         fi
-        chmod +x "$CMD_PATH"
+        chmod +x "$CMD_PATH" || true
         "$CMD_PATH" || {
           echo "Error: store_translation_paths script failed with exit code $?"
           exit 1
@@ -184,10 +184,11 @@ runs:
         if [[ -n "$BASE_SHA" && "$BASE_SHA" == "$CUR_SHA" ]]; then
           echo "No new commits since last sync – skipping diff."
           echo "identical=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "Commits differ (or base_sha empty) – continue."
-          echo "identical=false" >> "$GITHUB_OUTPUT"
+          exit 0
         fi
+
+        echo "Commits differ (or base_sha empty) – continue."
+        echo "identical=false" >> "$GITHUB_OUTPUT"
 
     - name: Get changed files
       if: inputs.rambo_mode != 'true' && (inputs.use_tag_tracking != 'true' || steps.check-sha.outputs.identical != 'true')
@@ -270,7 +271,7 @@ runs:
           echo "Error: Binary for platform '${PLATFORM}' not found!"
           exit 1
         fi
-        chmod +x "$CMD_PATH"
+        chmod +x "$CMD_PATH" || true
         "$CMD_PATH" || {
           echo "Error: find_all_files script failed with exit code $?"
           exit 1

@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMain(m *testing.M) {
@@ -27,36 +28,108 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func TestExecuteUploadTimeout(t *testing.T) {
-	// Mock to replace the real call to lokalise2
-	mockBinary := "./fixtures/mock_sleep"
+func TestExecuteUploadTimeout_Integration(t *testing.T) {
+	// Build the mock sleep binary
+	mockBinary := "./fixtures/sleep/mock_sleep"
 	if runtime.GOOS == "windows" {
 		mockBinary += ".exe"
 	}
+	buildMockBinaryIfNeeded(t, "./fixtures/sleep/sleep.go", mockBinary)
 
-	// Build the mock binary if needed
-	buildMockBinaryIfNeeded(t, "./fixtures/sleep.go", mockBinary)
+	args := []string{"sleep"} // makes the fixture sleep 2s
+	uploadTimeout := 1        // 1s timeout so it should trip
 
-	args := []string{"sleep"} // Argument to trigger sleep in the mock process
-	uploadTimeout := 1        // Timeout in seconds, smaller than sleep duration
-
-	fmt.Println("Executing upload with timeout...")
-
-	// Call the actual executeUpload function
 	err := executeUpload(mockBinary, args, uploadTimeout)
-
-	fmt.Println("Execution completed.")
-
-	// Debugging: Display the exact error received
-	if err != nil {
-		fmt.Printf("Error returned: %v\n", err)
+	if err == nil {
+		t.Fatalf("expected timeout error, got nil")
 	}
 
-	// Validate the result
+	// Be robust against optional stderr suffix; just check the prefix
+	wantPrefix := fmt.Sprintf("command timed out after %ds", uploadTimeout)
+	if !strings.HasPrefix(err.Error(), wantPrefix) {
+		t.Fatalf("want error prefix %q, got %q", wantPrefix, err.Error())
+	}
+}
+
+func TestExecuteUpload_RateLimitStderrDetected(t *testing.T) {
+	// Build the 429-stderr binary
+	bin := "./fixtures/exit_429/exit_429"
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
+	buildMockBinaryIfNeeded(t, "./fixtures/exit_429/exit_429.go", bin)
+
+	// No args, immediate exit with 429-ish stderr
+	err := executeUpload(bin, nil, 3)
 	if err == nil {
-		t.Errorf("Expected timeout error, but got nil")
-	} else if err.Error() != "command timed out" {
-		t.Errorf("Expected 'command timed out' error, but got: %v", err)
+		t.Fatalf("expected non-nil error from 429 mock")
+	}
+	if !isRateLimitError(err) {
+		t.Fatalf("expected isRateLimitError to be true; got err=%q", err.Error())
+	}
+}
+
+func TestExecuteUpload_NonRateLimitError(t *testing.T) {
+	// Build the non-429-stderr binary
+	bin := "./fixtures/exit_err/exit_err"
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
+	buildMockBinaryIfNeeded(t, "./fixtures/exit_err/exit_err.go", bin)
+
+	err := executeUpload(bin, nil, 3)
+	if err == nil {
+		t.Fatalf("expected non-nil error from error mock")
+	}
+	if isRateLimitError(err) {
+		t.Fatalf("expected isRateLimitError to be false; got err=%q", err.Error())
+	}
+}
+
+func TestUploadFile_RetriesOnRateLimit_WithMock(t *testing.T) {
+	cfg := UploadConfig{
+		FilePath:      "testfile_retry.json",
+		ProjectID:     "test_project",
+		Token:         "test_token",
+		LangISO:       "en",
+		GitHubRefName: "main",
+		MaxRetries:    3,
+		SleepTime:     0,
+		UploadTimeout: 120,
+	}
+
+	// temp file so validateFile passes
+	f, err := os.Create(cfg.FilePath)
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	_ = f.Close()
+	defer os.Remove(cfg.FilePath)
+
+	call := 0
+	mockExec := func(cmdPath string, args []string, uploadTimeout int) error {
+		call++
+		if call == 1 {
+			return fmt.Errorf("API request error 429: boom")
+		}
+		return nil
+	}
+
+	done := make(chan struct{})
+	go func() {
+		uploadFile(cfg, mockExec)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// success
+	case <-time.After(2 * time.Second):
+		t.Fatalf("uploadFile did not complete in time (likely stuck)")
+	}
+
+	if call != 2 {
+		t.Fatalf("expected 2 calls (1 retry), got %d", call)
 	}
 }
 
@@ -181,6 +254,58 @@ func TestUploadFile(t *testing.T) {
 			uploadFile(tt.config, tt.mockExecutor)
 		})
 	}
+}
+
+func TestExecuteUpload_WrapsExitErrorAndStderr(t *testing.T) {
+	bin := "./fixtures/exit_err/exit_err"
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
+	buildMockBinaryIfNeeded(t, "./fixtures/exit_err/exit_err.go", bin)
+
+	err := executeUpload(bin, nil, 3)
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if !strings.Contains(err.Error(), "some permanent error happened") {
+		t.Fatalf("stderr not included: %q", err.Error())
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected wrapped exec.ExitError")
+	}
+}
+
+func TestUploadFile_MaxRetriesCallCount(t *testing.T) {
+	cfg := UploadConfig{
+		FilePath:      "retry_forever.json",
+		ProjectID:     "p",
+		Token:         "tok",
+		LangISO:       "en",
+		GitHubRefName: "main",
+		MaxRetries:    4,
+		SleepTime:     0, // keep fast
+		UploadTimeout: 1,
+	}
+	f, _ := os.Create(cfg.FilePath)
+	f.Close()
+	defer os.Remove(cfg.FilePath)
+
+	var calls int
+	mockExec := func(cmdPath string, args []string, uploadTimeout int) error {
+		calls++
+		return fmt.Errorf("API request error 429: nope")
+	}
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatalf("expected panic after retries exhausted")
+		}
+		if calls != cfg.MaxRetries {
+			t.Fatalf("expected %d attempts, got %d", cfg.MaxRetries, calls)
+		}
+	}()
+	uploadFile(cfg, mockExec)
 }
 
 func TestValidate(t *testing.T) {
@@ -311,6 +436,23 @@ func TestValidate(t *testing.T) {
 			validate(tt.config)
 		})
 	}
+}
+
+func TestValidate_DirectoryPath(t *testing.T) {
+	dir := t.TempDir()
+	cfg := UploadConfig{
+		FilePath:      dir, // directory, not a file
+		ProjectID:     "p",
+		Token:         "tok",
+		LangISO:       "en",
+		GitHubRefName: "main",
+	}
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatalf("expected error for directory path, got none")
+		}
+	}()
+	validate(cfg)
 }
 
 func TestConstructArgs(t *testing.T) {

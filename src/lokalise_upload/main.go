@@ -2,8 +2,8 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -105,37 +105,52 @@ func validate(config UploadConfig) {
 	}
 }
 
-// validateFile checks if the file exists and is not empty.
+// validateFile checks if the file exists
 func validateFile(filePath string) {
 	if filePath == "" {
 		returnWithError("File path is required and cannot be empty.")
 	}
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+
+	fi, err := os.Stat(filePath)
+	if os.IsNotExist(err) {
 		returnWithError(fmt.Sprintf("File %s does not exist.", filePath))
+	}
+	if err != nil {
+		returnWithError(fmt.Sprintf("Cannot stat file %s: %v", filePath, err))
+	}
+	if fi.IsDir() {
+		returnWithError(fmt.Sprintf("Path %s is a directory, not a file.", filePath))
 	}
 }
 
 // Call lokalise2 to upload files
 func executeUpload(cmdPath string, args []string, uploadTimeout int) error {
-	// Timeout for the lokalise2 call
 	timeout := time.Duration(uploadTimeout) * time.Second
-
-	// Create a context with a timeout
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, cmdPath, args...)
+
+	var stderr bytes.Buffer
 	cmd.Stdout = io.Discard
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = &stderr
 
 	err := cmd.Run()
 
-	// Check if the context was canceled due to timeout
+	// if we timed out, surface that explicitly
 	if ctx.Err() == context.DeadlineExceeded {
-		return errors.New("command timed out")
+		s := strings.TrimSpace(stderr.String())
+		if s != "" {
+			return fmt.Errorf("command timed out after %ds: %s", uploadTimeout, s)
+		}
+		return fmt.Errorf("command timed out after %ds", uploadTimeout)
 	}
 
-	return err
+	if err != nil {
+		// attach stderr so caller can decide if it’s rate limiting
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return nil
 }
 
 // uploadFile uploads a file to Lokalise using the lokalise2 CLI tool.
@@ -161,11 +176,12 @@ func uploadFile(config UploadConfig, uploadExecutor func(cmdPath string, args []
 
 		// Check if the error is due to rate limiting (HTTP status code 429)
 		if isRateLimitError(err) {
+			fmt.Printf("Rate limited, sleeping %ds before retry...\n", sleepTime)
 			// Sleep for the current sleep time before retrying
 			time.Sleep(time.Duration(sleepTime) * time.Second)
 
 			// Check if the total retry time has exceeded the maximum allowed time
-			if time.Since(startTime).Seconds() > maxTotalTime {
+			if time.Since(startTime).Seconds() >= maxTotalTime {
 				returnWithError(fmt.Sprintf("Max retry time exceeded (%d seconds) for %s. Exiting.", maxTotalTime, config.FilePath))
 			}
 
@@ -222,7 +238,13 @@ func constructArgs(config UploadConfig) []string {
 
 // isRateLimitError checks if the error is due to rate limiting (HTTP status code 429).
 func isRateLimitError(err error) bool {
-	return strings.Contains(err.Error(), "API request error 429")
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "api request error 429") ||
+		strings.Contains(s, "request error 429") ||
+		strings.Contains(s, "rate limit")
 }
 
 // min returns the smaller of two integers.

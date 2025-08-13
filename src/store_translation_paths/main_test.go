@@ -122,7 +122,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 		},
 		{
 			name:       "Flat naming with nested paths",
-			paths:      []string{"dir1/dir2/dir3", "another/nested/dir"},
+			paths:      []string{"dir1/dir2/dir3", "another\\nested/dir"},
 			flatNaming: true,
 			baseLang:   "fr",
 			fileExt:    "xml",
