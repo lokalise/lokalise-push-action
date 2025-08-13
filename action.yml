@@ -324,7 +324,7 @@ runs:
           echo "Error: Binary for platform '${PLATFORM}' not found!"
           exit 1
         fi
-        chmod +x "$CMD_PATH"
+        chmod +x "$CMD_PATH" || true
 
         set +e
         echo "$FILES" | tr ',' '\n' | xargs -P 6 -I {} "$CMD_PATH" "{}" "${{ inputs.project_id }}" "${{ inputs.api_token }}"
