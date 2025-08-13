@@ -159,8 +159,8 @@ func uploadFile(config UploadConfig, uploadExecutor func(cmdPath string, args []
 			return
 		}
 
-		// Check if the error is due to rate limiting (HTTP status code 429)
-		if isRateLimitError(err) {
+		// Check if the error is retryable (rate limiting or timeout)
+		if isRetryableError(err) {
 			// Sleep for the current sleep time before retrying
 			time.Sleep(time.Duration(sleepTime) * time.Second)
 
@@ -174,7 +174,7 @@ func uploadFile(config UploadConfig, uploadExecutor func(cmdPath string, args []
 			continue // Retry the upload
 		}
 
-		// If the error is not due to rate limiting, exit with an error message
+		// If the error is not retryable, exit with an error message
 		returnWithError(fmt.Sprintf("Permanent error during upload for %s: %v", config.FilePath, err))
 	}
 
@@ -223,6 +223,11 @@ func constructArgs(config UploadConfig) []string {
 // isRateLimitError checks if the error is due to rate limiting (HTTP status code 429).
 func isRateLimitError(err error) bool {
 	return strings.Contains(err.Error(), "API request error 429")
+}
+
+// isRetryableError checks if the error is retryable (rate limits or timeouts).
+func isRetryableError(err error) bool {
+	return isRateLimitError(err) || strings.Contains(err.Error(), "command timed out")
 }
 
 // min returns the smaller of two integers.

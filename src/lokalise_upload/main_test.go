@@ -142,6 +142,30 @@ func TestUploadFile(t *testing.T) {
 			},
 			shouldError: true,
 		},
+		{
+			name: "Timeout and retries succeed",
+			config: UploadConfig{
+				FilePath:      "testfile_timeout_retry.json",
+				ProjectID:     "test_project",
+				Token:         "test_token",
+				LangISO:       "en",
+				GitHubRefName: "main",
+				MaxRetries:    3,
+				SleepTime:     1,
+				UploadTimeout: 120,
+			},
+			mockExecutor: func() func(cmdPath string, args []string, uploadTimeout int) error {
+				callCount := 0
+				return func(cmdPath string, args []string, uploadTimeout int) error {
+					callCount++
+					if callCount == 1 {
+						return errors.New("command timed out")
+					}
+					return nil
+				}
+			}(),
+			shouldError: false,
+		},
 	}
 
 	for _, tt := range tests {
