@@ -1,5 +1,7 @@
 # GitHub action to push changed translation files to Lokalise
 
+![GitHub Release](https://img.shields.io/github/v/release/lokalise/lokalise-push-action)
+
 GitHub action to upload changed translation files in the base language from your GitHub repository to [Lokalise TMS](https://lokalise.com/).
 
 * Step-by-step tutorial covering the usage of this action is available on [Lokalise Developer Hub](https://developers.lokalise.com/docs/github-actions).
