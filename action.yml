@@ -138,7 +138,8 @@ runs:
       run: |
         set -euo pipefail
 
-        TAG_NAME="lokalise-sync-${{ github.ref_name }}"
+        BRANCH_NAME="${{ github.head_ref || github.ref_name }}"
+        TAG_NAME="lokalise-sync-${BRANCH_NAME}"
         echo "Looking for tag: $TAG_NAME"
 
         if git ls-remote --exit-code --refs --tags origin "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
@@ -342,42 +343,58 @@ runs:
       if: steps.push-translation-files.outputs.files_uploaded == 'true' && (steps.check-first-run.outputs.first_run == 'true' || inputs.use_tag_tracking == 'true')
       shell: bash
       env:
-        USE_TAG_TRACKING: "${{ inputs.use_tag_tracking }}"
-        FIRST_RUN: "${{ steps.check-first-run.outputs.first_run }}"
-        GIT_USER_NAME: "${{ inputs.git_user_name }}"
-        GIT_USER_EMAIL: "${{ inputs.git_user_email }}"
-        TAG_SYNC_NAME: "lokalise-sync-${{ github.ref_name }}"
+        USE_TAG_TRACKING: ${{ inputs.use_tag_tracking }}
+        FIRST_RUN: ${{ steps.check-first-run.outputs.first_run }}
+        GIT_USER_NAME: ${{ inputs.git_user_name }}
+        GIT_USER_EMAIL: ${{ inputs.git_user_email }}
       run: |
         set -euo pipefail
 
         echo "Lokalise tagging..."
 
-        echo "Configuring Git..."
+        # Git identity (fallback to actor)
         USER_NAME="${GIT_USER_NAME:-$GITHUB_ACTOR}"
         USER_EMAIL="${GIT_USER_EMAIL:-${USER_NAME}@users.noreply.github.com}"
         git config --global user.name "$USER_NAME"
         git config --global user.email "$USER_EMAIL"
 
-        # Part 1: Mark upload as complete if this is the first run.
+        # Resolve a real branch name even on pull_request events
+        BRANCH_NAME="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+        TAG_SYNC_NAME="lokalise-sync-${BRANCH_NAME}"
+
+        # ---- Part 1: Global 'first run' tag ----
         if [[ "$FIRST_RUN" == "true" ]]; then
-          echo "Checking remote for 'lokalise-upload-complete'..."
-          if git ls-remote --exit-code --refs --tags origin refs/tags/lokalise-upload-complete >/dev/null 2>&1; then
-            echo "Tag exists on remote, skipping creation."
-            git fetch --quiet origin refs/tags/lokalise-upload-complete:refs/tags/lokalise-upload-complete || true
+          GLOBAL_TAG="lokalise-upload-complete"
+          echo "Marking first run with global tag '$GLOBAL_TAG'..."
+
+          # Create locally only if missing
+          if ! git rev-parse -q --verify "refs/tags/$GLOBAL_TAG" >/dev/null; then
+            MSG="Initial Lokalise upload completed, run=$GITHUB_RUN_ID, sha=$GITHUB_SHA, $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            git tag -a "$GLOBAL_TAG" -m "$MSG"
+          fi
+
+          # Push; handle race (another job might create it between our checks)
+          if git push origin "refs/tags/$GLOBAL_TAG"; then
+            echo "Created global tag '$GLOBAL_TAG'."
           else
-            echo "Creating and pushing 'lokalise-upload-complete'..."
-            git tag -a lokalise-upload-complete -m "Initial Lokalise upload completed" || true
-            git push origin refs/tags/lokalise-upload-complete || true
-            echo "Tag 'lokalise-upload-complete' created (or push skipped on error)."
+            echo "Push of '$GLOBAL_TAG' failed. Checking remote (race?)"
+            if git ls-remote --exit-code --refs --tags origin "refs/tags/$GLOBAL_TAG" >/dev/null 2>&1; then
+              echo "Global tag already exists; proceeding."
+            else
+              echo "Failed to create global tag '$GLOBAL_TAG' and it doesn't exist remotely."
+              exit 1
+            fi
           fi
         fi
 
-        # Part 2: Update branch-specific sync tag if tag tracking is enabled.
+        # ---- Part 2: Branch-scoped moving sync tag ----
         if [[ "$USE_TAG_TRACKING" == "true" ]]; then
-          echo "Updating branch sync tag '$TAG_SYNC_NAME'..."
-          git tag -fa "$TAG_SYNC_NAME" -m "Lokalise sync completed on branch '$GITHUB_REF_NAME'" || true
-          git push --force origin "refs/tags/$TAG_SYNC_NAME" || true
-          echo "Tag '$TAG_SYNC_NAME' now points to $(git rev-parse HEAD || echo unknown)."
+          SHORT=$(git rev-parse --short HEAD)
+          MSG="Lokalise sync completed on '$BRANCH_NAME', run=$GITHUB_RUN_ID, sha=$GITHUB_SHA, $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo "Updating branch sync tag '$TAG_SYNC_NAME' -> $SHORT"
+          git tag -fa "$TAG_SYNC_NAME" -m "$MSG"
+          git push --force origin "refs/tags/$TAG_SYNC_NAME"
+          echo "Tag '$TAG_SYNC_NAME' now points to $SHORT."
         fi
 
         echo "Tagging step completed."
