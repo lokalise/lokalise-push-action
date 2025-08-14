@@ -280,7 +280,9 @@ func isServerError(s string) bool {
 func isLangIsoError(s string) bool {
 	x := strings.ToLower(s)
 	return strings.Contains(x, "400 invalid `lang_iso`") ||
-		strings.Contains(x, "400 invalid lang_iso")
+		strings.Contains(x, "400 invalid 'lang_iso'") ||
+		strings.Contains(x, "400 invalid lang_iso") ||
+		strings.Contains(x, "invalid lang_iso parameter")
 }
 
 func isRetryableError(err error) bool {
