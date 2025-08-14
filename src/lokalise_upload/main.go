@@ -209,27 +209,34 @@ func uploadFile(config UploadConfig, uploadExecutor func(cmdPath string, args []
 
 		err := uploadExecutor("./bin/lokalise2", args, config.UploadTimeout)
 		if err == nil {
-			// Upload succeeded
 			fmt.Printf("Successfully uploaded file %s\n", config.FilePath)
 			return
 		}
 
-		// Check if the error is due to rate limiting or timeouts
 		if isRetryableError(err) {
-			// Will we exceed the max total time by sleeping + another attempt?
+			if attempt == config.MaxRetries {
+				returnWithError(fmt.Sprintf(
+					"Failed to upload file %s after %d attempts. Last error: %v",
+					config.FilePath, config.MaxRetries, err,
+				))
+			}
+
+			// Will we exceed the max total time by sleeping before the next attempt?
 			elapsed := time.Since(startTime)
 			if elapsed+time.Duration(sleepTime)*time.Second >= time.Duration(maxTotalTime)*time.Second {
-				returnWithError(fmt.Sprintf("Max retry time exceeded (%d seconds) for %s. Exiting.", maxTotalTime, config.FilePath))
+				returnWithError(fmt.Sprintf(
+					"Max retry time exceeded (%d seconds) for %s. Exiting.",
+					maxTotalTime, config.FilePath,
+				))
 			}
 
 			fmt.Printf("Retryable error detected (%v), sleeping %ds before retry...\n", err, sleepTime)
 			time.Sleep(time.Duration(sleepTime) * time.Second)
-
 			sleepTime = min(sleepTime*2, maxSleepTime)
 			continue
 		}
 
-		// If the error is not due to rate limiting, exit with an error message
+		// Non-retryable: fail fast.
 		returnWithError(fmt.Sprintf("Permanent error during upload for %s: %v", config.FilePath, err))
 	}
 
