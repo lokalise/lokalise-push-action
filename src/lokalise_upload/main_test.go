@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -787,6 +788,41 @@ func TestConstructArgs(t *testing.T) {
 	}
 }
 
+func TestUploadFile_ServerErrorFastFail(t *testing.T) {
+	cfg := UploadConfig{
+		FilePath:      "file.json",
+		ProjectID:     "p",
+		Token:         "t",
+		LangISO:       "en",
+		GitHubRefName: "main",
+		MaxRetries:    3,
+		SleepTime:     0,
+		UploadTimeout: 10,
+	}
+
+	// temp file so validateFile passes
+	f, err := os.Create(cfg.FilePath)
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	_ = f.Close()
+	defer os.Remove(cfg.FilePath)
+
+	// executor returns a 500-ish message; uploadFile should bail immediately
+	mockExec := func(cmdPath string, args []string, timeout int) error {
+		return errors.New("Error: API request error 500 Something went wrong")
+	}
+
+	stderr, pan := captureStderr(func() { uploadFile(cfg, mockExec) })
+
+	if pan == nil {
+		t.Fatalf("expected panic from returnWithError (exit), got none")
+	}
+	if !strings.Contains(stderr, "server responded with an error (500); exiting") {
+		t.Fatalf("stderr missing 500 fast-fail message:\n---\n%s\n---", stderr)
+	}
+}
+
 // normalizeArgs trims whitespace for consistent comparison of arguments.
 func normalizeArgs(args []string) []string {
 	normalized := make([]string, len(args))
@@ -815,4 +851,26 @@ func buildMockBinaryIfNeeded(t *testing.T, sourcePath, outputPath string) {
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("Failed to build mock binary: %v", err)
 	}
+}
+
+func captureStderr(fn func()) (stderr string, pan any) {
+	old := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	done := make(chan struct{})
+	go func() {
+		defer func() {
+			pan = recover()
+			close(done)
+		}()
+		fn()
+	}()
+
+	<-done
+	_ = w.Close()
+	os.Stderr = old
+	b, _ := io.ReadAll(r)
+	_ = r.Close()
+	return string(b), pan
 }

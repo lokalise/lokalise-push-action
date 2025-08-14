@@ -5,13 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/bodrovis/lokalise-actions-common/v2/parsers"
+	"github.com/bodrovis/lokalise-actions-common/v2/tailring"
 )
 
 // exitFunc is a function variable that defaults to os.Exit.
@@ -43,34 +43,6 @@ type UploadConfig struct {
 	PollTimeout      int
 	UploadTimeout    int
 }
-
-// ringBuffer keeps only the last N bytes written.
-type ringBuffer struct {
-	buf   []byte
-	limit int
-}
-
-func newRingBuffer(n int) *ringBuffer { return &ringBuffer{limit: n} }
-
-func (r *ringBuffer) Write(p []byte) (int, error) {
-	if r.limit <= 0 {
-		return len(p), nil
-	}
-	// If incoming chunk is bigger than limit, keep only its tail.
-	if len(p) >= r.limit {
-		r.buf = append(r.buf[:0], p[len(p)-r.limit:]...)
-		return len(p), nil
-	}
-	need := len(r.buf) + len(p) - r.limit
-	if need > 0 {
-		// Drop the oldest bytes to make room.
-		r.buf = r.buf[need:]
-	}
-	r.buf = append(r.buf, p...)
-	return len(p), nil
-}
-
-func (r *ringBuffer) String() string { return string(r.buf) }
 
 func main() {
 	// Ensure the required command-line arguments are provided
@@ -152,7 +124,7 @@ func validateFile(filePath string) {
 }
 
 // executeUpload runs the command with a timeout, streams output to CI logs,
-// and returns an error that includes the last chunk of stderr (capped).
+// and returns an error that includes the last chunk of stderr (pref) or stdout (fallback), capped.
 func executeUpload(cmdPath string, args []string, uploadTimeout int) error {
 	timeout := time.Duration(uploadTimeout) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -160,32 +132,42 @@ func executeUpload(cmdPath string, args []string, uploadTimeout int) error {
 
 	cmd := exec.CommandContext(ctx, cmdPath, args...)
 
-	// Stream to job logs, but keep a capped copy of stderr for the error message.
-	const stderrMax = 64 * 1024 // last 64 KB
-	rb := newRingBuffer(stderrMax)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = io.MultiWriter(os.Stderr, rb)
+	// Separate tails so usage spam on one stream doesn't evict the real error on the other.
+	rbErr := tailring.NewKB(64) // stderr usually carries the actionable error
+	rbOut := tailring.NewKB(16) // stdout tail for context
+
+	cmd.Stdout = tailring.Tee(os.Stdout, rbOut)
+	cmd.Stderr = tailring.Tee(os.Stderr, rbErr)
 
 	err := cmd.Run()
 
+	// Build tails (stderr first)
+	stderrTail := strings.TrimSpace(rbErr.String())
+	stdoutTail := strings.TrimSpace(rbOut.String())
+	pickTail := func() string {
+		if stderrTail != "" {
+			return stderrTail
+		}
+		return stdoutTail
+	}
+
+	// Timeout
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		tail := strings.TrimSpace(rb.String())
-		if tail != "" {
-			return fmt.Errorf("command timed out after %ds: %s", uploadTimeout, tail)
+		if t := pickTail(); t != "" {
+			return fmt.Errorf("command timed out after %ds: %s", uploadTimeout, t)
 		}
 		return fmt.Errorf("command timed out after %ds", uploadTimeout)
 	}
 
+	// Non-zero exit
 	if err != nil {
-		// Attach exit code if we have it, plus the stderr tail.
 		var ee *exec.ExitError
 		exit := ""
 		if errors.As(err, &ee) {
 			exit = fmt.Sprintf(" (exit %d)", ee.ExitCode())
 		}
-		tail := strings.TrimSpace(rb.String())
-		if tail != "" {
-			return fmt.Errorf("command failed%s: %s: %w", exit, tail, err)
+		if t := pickTail(); t != "" {
+			return fmt.Errorf("command failed%s: %s: %w", exit, t, err)
 		}
 		return fmt.Errorf("command failed%s: %w", exit, err)
 	}
@@ -200,10 +182,8 @@ func uploadFile(config UploadConfig, uploadExecutor func(cmdPath string, args []
 
 	args := constructArgs(config)
 	startTime := time.Now()
-
 	sleepTime := config.SleepTime
 
-	// Attempt to upload the file, retrying if rate-limited
 	for attempt := 1; attempt <= config.MaxRetries; attempt++ {
 		fmt.Printf("Attempt %d of %d\n", attempt, config.MaxRetries)
 
@@ -213,6 +193,12 @@ func uploadFile(config UploadConfig, uploadExecutor func(cmdPath string, args []
 			return
 		}
 
+		// Fast-fail on server error (500 etc.)
+		if isServerError(err.Error()) {
+			returnWithError(fmt.Sprintf("server responded with an error (500); exiting: %v", err))
+		}
+
+		// Retryable? (timeouts, rate limit, polling limit, etc.)
 		if isRetryableError(err) {
 			if attempt == config.MaxRetries {
 				returnWithError(fmt.Sprintf(
@@ -221,7 +207,6 @@ func uploadFile(config UploadConfig, uploadExecutor func(cmdPath string, args []
 				))
 			}
 
-			// Will we exceed the max total time by sleeping before the next attempt?
 			elapsed := time.Since(startTime)
 			if elapsed+time.Duration(sleepTime)*time.Second >= time.Duration(maxTotalTime)*time.Second {
 				returnWithError(fmt.Sprintf(
@@ -240,7 +225,6 @@ func uploadFile(config UploadConfig, uploadExecutor func(cmdPath string, args []
 		returnWithError(fmt.Sprintf("Permanent error during upload for %s: %v", config.FilePath, err))
 	}
 
-	// If all retries have been exhausted, exit with an error message
 	returnWithError(fmt.Sprintf("Failed to upload file %s after %d attempts.", config.FilePath, config.MaxRetries))
 }
 
@@ -280,6 +264,13 @@ func constructArgs(config UploadConfig) []string {
 	}
 
 	return args
+}
+
+func isServerError(s string) bool {
+	x := strings.ToLower(s)
+	return strings.Contains(x, "api request error 500") ||
+		strings.Contains(x, "status code 500") ||
+		strings.Contains(x, "http 500")
 }
 
 func isRetryableError(err error) bool {
