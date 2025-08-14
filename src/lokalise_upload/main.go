@@ -198,6 +198,10 @@ func uploadFile(config UploadConfig, uploadExecutor func(cmdPath string, args []
 			returnWithError(fmt.Sprintf("server responded with an error (500); exiting: %v", err))
 		}
 
+		if isLangIsoError(err.Error()) {
+			returnWithError(fmt.Sprintf("invalid lang_iso (error 400) - make sure your project has a proper base_lang; exiting: %v", err))
+		}
+
 		// Retryable? (timeouts, rate limit, polling limit, etc.)
 		if isRetryableError(err) {
 			if attempt == config.MaxRetries {
@@ -271,6 +275,12 @@ func isServerError(s string) bool {
 	return strings.Contains(x, "api request error 500") ||
 		strings.Contains(x, "status code 500") ||
 		strings.Contains(x, "http 500")
+}
+
+func isLangIsoError(s string) bool {
+	x := strings.ToLower(s)
+	return strings.Contains(x, "400 Invalid `lang_iso`") ||
+		strings.Contains(x, "400 Invalid lang_iso")
 }
 
 func isRetryableError(err error) bool {
