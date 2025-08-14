@@ -195,11 +195,11 @@ func uploadFile(config UploadConfig, uploadExecutor func(cmdPath string, args []
 
 		// Fast-fail on server error (500 etc.)
 		if isServerError(err.Error()) {
-			returnWithError(fmt.Sprintf("server responded with an error (500); exiting: %v", err))
+			returnWithError("Lokalise server responded with an error (500); exiting")
 		}
 
 		if isLangIsoError(err.Error()) {
-			returnWithError(fmt.Sprintf("invalid lang_iso (error 400) - make sure your project has a proper base_lang; exiting: %v", err))
+			returnWithError("invalid lang_iso (error 400) - make sure your project has a proper base_lang; exiting")
 		}
 
 		// Retryable? (timeouts, rate limit, polling limit, etc.)
