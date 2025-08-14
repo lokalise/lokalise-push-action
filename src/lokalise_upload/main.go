@@ -279,8 +279,8 @@ func isServerError(s string) bool {
 
 func isLangIsoError(s string) bool {
 	x := strings.ToLower(s)
-	return strings.Contains(x, "400 Invalid `lang_iso`") ||
-		strings.Contains(x, "400 Invalid lang_iso")
+	return strings.Contains(x, "400 invalid `lang_iso`") ||
+		strings.Contains(x, "400 invalid lang_iso")
 }
 
 func isRetryableError(err error) bool {
@@ -296,8 +296,9 @@ func isRetryableError(err error) bool {
 	msg := strings.ToLower(err.Error())
 
 	// Timeouts or transient network failures
-	if strings.Contains(msg, "timeout") ||
+	if strings.Contains(msg, "command timed out") ||
 		strings.Contains(msg, "timed out") ||
+		strings.Contains(msg, "context deadline exceeded") ||
 		strings.Contains(msg, "time exceeded") ||
 		strings.Contains(msg, "polling time exceeded limit") {
 		return true
