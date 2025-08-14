@@ -134,11 +134,15 @@ func TestUploadFile_RetriesOnRateLimit_WithMock(t *testing.T) {
 }
 
 func TestUploadFile(t *testing.T) {
+	type (
+		execFn = func(cmdPath string, args []string, uploadTimeout int) error
+	)
 	tests := []struct {
 		name         string
 		config       UploadConfig
-		mockExecutor func(cmdPath string, args []string, uploadTimeout int) error
+		mockExecutor execFn
 		shouldError  bool
+		wantCalls    int // optional: -1 to skip checking
 	}{
 		{
 			name: "Successful upload",
@@ -149,16 +153,17 @@ func TestUploadFile(t *testing.T) {
 				LangISO:       "en",
 				GitHubRefName: "main",
 				MaxRetries:    3,
-				SleepTime:     1,
+				SleepTime:     0,
 				UploadTimeout: 120,
 			},
-			mockExecutor: func(cmdPath string, args []string, uploadTimeout int) error {
-				return nil // Simulate success
+			mockExecutor: func(_ string, _ []string, _ int) error {
+				return nil
 			},
 			shouldError: false,
+			wantCalls:   1,
 		},
 		{
-			name: "Rate-limited and retries succeed",
+			name: "Rate-limited then succeed (retryable)",
 			config: UploadConfig{
 				FilePath:      "testfile_retry.json",
 				ProjectID:     "test_project",
@@ -166,92 +171,150 @@ func TestUploadFile(t *testing.T) {
 				LangISO:       "en",
 				GitHubRefName: "main",
 				MaxRetries:    3,
-				SleepTime:     1,
+				SleepTime:     0,
 				UploadTimeout: 120,
 			},
-			mockExecutor: func() func(cmdPath string, args []string, uploadTimeout int) error {
-				callCount := 0
-				return func(cmdPath string, args []string, uploadTimeout int) error {
-					callCount++
-					if callCount == 1 {
-						return errors.New("API request error 429")
+			mockExecutor: func() execFn {
+				call := 0
+				return func(_ string, _ []string, _ int) error {
+					call++
+					if call == 1 {
+						return errors.New("API request error 429: Rate limit exceeded")
 					}
 					return nil
 				}
 			}(),
 			shouldError: false,
+			wantCalls:   2,
 		},
 		{
-			name: "Permanent error",
+			name: "Timeout then succeed (retryable)",
+			config: UploadConfig{
+				FilePath:      "testfile_timeout.json",
+				ProjectID:     "test_project",
+				Token:         "test_token",
+				LangISO:       "en",
+				GitHubRefName: "main",
+				MaxRetries:    3,
+				SleepTime:     0,
+				UploadTimeout: 120,
+			},
+			mockExecutor: func() execFn {
+				call := 0
+				return func(_ string, _ []string, _ int) error {
+					call++
+					if call == 1 {
+						return errors.New("command timed out after 10s") // produced by executeUpload on ctx deadline
+					}
+					return nil
+				}
+			}(),
+			shouldError: false,
+			wantCalls:   2,
+		},
+		{
+			name: "Polling exceeded then succeed (retryable)",
+			config: UploadConfig{
+				FilePath:      "testfile_poll.json",
+				ProjectID:     "test_project",
+				Token:         "test_token",
+				LangISO:       "en",
+				GitHubRefName: "main",
+				MaxRetries:    3,
+				SleepTime:     0,
+				UploadTimeout: 120,
+			},
+			mockExecutor: func() execFn {
+				call := 0
+				return func(_ string, _ []string, _ int) error {
+					call++
+					if call == 1 {
+						return errors.New("Polling time exceeded limit")
+					}
+					return nil
+				}
+			}(),
+			shouldError: false,
+			wantCalls:   2,
+		},
+		{
+			name: "Permanent error (non-retryable) — no retry",
 			config: UploadConfig{
 				FilePath:      "testfile_error.json",
 				ProjectID:     "test_project",
 				Token:         "test_token",
 				LangISO:       "en",
 				GitHubRefName: "main",
-				MaxRetries:    3,
-				SleepTime:     1,
+				MaxRetries:    5,
+				SleepTime:     0,
 				UploadTimeout: 120,
 			},
-			mockExecutor: func(cmdPath string, args []string, uploadTimeout int) error {
+			mockExecutor: func(_ string, _ []string, _ int) error {
 				return errors.New("Permanent error")
 			},
 			shouldError: true,
+			wantCalls:   1,
 		},
 		{
-			name: "Max retries exceeded",
+			name: "Retryable forever — max retries exhausted",
 			config: UploadConfig{
 				FilePath:      "testfile_max_retries.json",
 				ProjectID:     "test_project",
 				Token:         "test_token",
 				LangISO:       "en",
 				GitHubRefName: "main",
-				MaxRetries:    2,
-				SleepTime:     1,
+				MaxRetries:    3,
+				SleepTime:     0,
 				UploadTimeout: 120,
 			},
-			mockExecutor: func(cmdPath string, args []string, uploadTimeout int) error {
-				return errors.New("API request error 429")
-			},
+			mockExecutor: func() execFn {
+				calls := 0
+				return func(_ string, _ []string, _ int) error {
+					calls++
+					return errors.New("API request error 429") // always retryable
+				}
+			}(),
 			shouldError: true,
+			wantCalls:   3, // exactly MaxRetries attempts
 		},
 	}
 
 	for _, tt := range tests {
-		tt := tt // Capture range variable
-
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			// Create a temporary file for testing
+
+			// temp file so validateFile passes
 			if tt.config.FilePath != "" {
 				f, err := os.Create(tt.config.FilePath)
 				if err != nil {
-					t.Fatalf("Failed to create temp file: %v", err)
+					t.Fatalf("create temp file: %v", err)
 				}
-				err = f.Close()
-				if err != nil {
-					log.Printf("Failed to close %s: %v", tt.config.FilePath, err)
-				}
-				defer func() {
-					if err := os.Remove(tt.config.FilePath); err != nil {
-						log.Printf("Failed to remove %s: %v", tt.config.FilePath, err)
-					}
-				}()
+				_ = f.Close()
+				defer os.Remove(tt.config.FilePath)
 			}
 
-			// Capture panic to test error handling
+			// wrap the mock to count calls
+			callCount := 0
+			wrapped := func(cmdPath string, args []string, uploadTimeout int) error {
+				callCount++
+				return tt.mockExecutor(cmdPath, args, uploadTimeout)
+			}
+
 			defer func() {
-				if r := recover(); r != nil {
-					if !tt.shouldError {
-						t.Errorf("Unexpected error in test '%s': %v", tt.name, r)
-					}
-				} else if tt.shouldError {
-					t.Errorf("Expected an error in test '%s' but did not get one", tt.name)
+				r := recover()
+				if tt.shouldError && r == nil {
+					t.Errorf("Expected error (panic), got none")
+				}
+				if !tt.shouldError && r != nil {
+					t.Errorf("Unexpected error: %v", r)
+				}
+				if tt.wantCalls > 0 && callCount != tt.wantCalls {
+					t.Errorf("call count mismatch: want %d got %d", tt.wantCalls, callCount)
 				}
 			}()
 
-			// Run the uploadFile function with the mock executor
-			uploadFile(tt.config, tt.mockExecutor)
+			uploadFile(tt.config, wrapped)
 		})
 	}
 }

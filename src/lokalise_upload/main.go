@@ -2,8 +2,8 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -43,6 +43,34 @@ type UploadConfig struct {
 	PollTimeout      int
 	UploadTimeout    int
 }
+
+// ringBuffer keeps only the last N bytes written.
+type ringBuffer struct {
+	buf   []byte
+	limit int
+}
+
+func newRingBuffer(n int) *ringBuffer { return &ringBuffer{limit: n} }
+
+func (r *ringBuffer) Write(p []byte) (int, error) {
+	if r.limit <= 0 {
+		return len(p), nil
+	}
+	// If incoming chunk is bigger than limit, keep only its tail.
+	if len(p) >= r.limit {
+		r.buf = append(r.buf[:0], p[len(p)-r.limit:]...)
+		return len(p), nil
+	}
+	need := len(r.buf) + len(p) - r.limit
+	if need > 0 {
+		// Drop the oldest bytes to make room.
+		r.buf = r.buf[need:]
+	}
+	r.buf = append(r.buf, p...)
+	return len(p), nil
+}
+
+func (r *ringBuffer) String() string { return string(r.buf) }
 
 func main() {
 	// Ensure the required command-line arguments are provided
@@ -123,7 +151,8 @@ func validateFile(filePath string) {
 	}
 }
 
-// Call lokalise2 to upload files
+// executeUpload runs the command with a timeout, streams output to CI logs,
+// and returns an error that includes the last chunk of stderr (capped).
 func executeUpload(cmdPath string, args []string, uploadTimeout int) error {
 	timeout := time.Duration(uploadTimeout) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -131,25 +160,36 @@ func executeUpload(cmdPath string, args []string, uploadTimeout int) error {
 
 	cmd := exec.CommandContext(ctx, cmdPath, args...)
 
-	var stderr bytes.Buffer
-	cmd.Stdout = io.Discard
-	cmd.Stderr = &stderr
+	// Stream to job logs, but keep a capped copy of stderr for the error message.
+	const stderrMax = 64 * 1024 // last 64 KB
+	rb := newRingBuffer(stderrMax)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = io.MultiWriter(os.Stderr, rb)
 
 	err := cmd.Run()
 
-	// if we timed out, surface that explicitly
-	if ctx.Err() == context.DeadlineExceeded {
-		s := strings.TrimSpace(stderr.String())
-		if s != "" {
-			return fmt.Errorf("command timed out after %ds: %s", uploadTimeout, s)
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		tail := strings.TrimSpace(rb.String())
+		if tail != "" {
+			return fmt.Errorf("command timed out after %ds: %s", uploadTimeout, tail)
 		}
 		return fmt.Errorf("command timed out after %ds", uploadTimeout)
 	}
 
 	if err != nil {
-		// attach stderr so caller can decide if it’s rate limiting
-		return fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+		// Attach exit code if we have it, plus the stderr tail.
+		var ee *exec.ExitError
+		exit := ""
+		if errors.As(err, &ee) {
+			exit = fmt.Sprintf(" (exit %d)", ee.ExitCode())
+		}
+		tail := strings.TrimSpace(rb.String())
+		if tail != "" {
+			return fmt.Errorf("command failed%s: %s: %w", exit, tail, err)
+		}
+		return fmt.Errorf("command failed%s: %w", exit, err)
 	}
+
 	return nil
 }
 
@@ -174,20 +214,19 @@ func uploadFile(config UploadConfig, uploadExecutor func(cmdPath string, args []
 			return
 		}
 
-		// Check if the error is due to rate limiting (HTTP status code 429)
-		if isRateLimitError(err) {
-			fmt.Printf("Rate limited, sleeping %ds before retry...\n", sleepTime)
-			// Sleep for the current sleep time before retrying
-			time.Sleep(time.Duration(sleepTime) * time.Second)
-
-			// Check if the total retry time has exceeded the maximum allowed time
-			if time.Since(startTime).Seconds() >= maxTotalTime {
+		// Check if the error is due to rate limiting or timeouts
+		if isRetryableError(err) {
+			// Will we exceed the max total time by sleeping + another attempt?
+			elapsed := time.Since(startTime)
+			if elapsed+time.Duration(sleepTime)*time.Second >= time.Duration(maxTotalTime)*time.Second {
 				returnWithError(fmt.Sprintf("Max retry time exceeded (%d seconds) for %s. Exiting.", maxTotalTime, config.FilePath))
 			}
 
-			// Exponentially increase the sleep time for the next retry, capped at maxSleepTime
+			fmt.Printf("Retryable error detected (%v), sleeping %ds before retry...\n", err, sleepTime)
+			time.Sleep(time.Duration(sleepTime) * time.Second)
+
 			sleepTime = min(sleepTime*2, maxSleepTime)
-			continue // Retry the upload
+			continue
 		}
 
 		// If the error is not due to rate limiting, exit with an error message
@@ -234,6 +273,29 @@ func constructArgs(config UploadConfig) []string {
 	}
 
 	return args
+}
+
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if isRateLimitError(err) {
+		return true
+	}
+
+	// Lowercase the message for case-insensitive matching
+	msg := strings.ToLower(err.Error())
+
+	// Timeouts or transient network failures
+	if strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "timed out") ||
+		strings.Contains(msg, "time exceeded") ||
+		strings.Contains(msg, "polling time exceeded limit") {
+		return true
+	}
+
+	return false
 }
 
 // isRateLimitError checks if the error is due to rate limiting (HTTP status code 429).
