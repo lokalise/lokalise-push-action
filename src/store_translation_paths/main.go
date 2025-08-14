@@ -84,7 +84,9 @@ func storeTranslationPaths(paths []string, flatNaming bool, baseLang, fileExt, n
 			formattedPath = filepath.Join(".", path, baseLang, "**", fmt.Sprintf("*.%s", fileExt))
 		}
 
-		if _, err := writer.Write([]byte(formattedPath + "\n")); err != nil {
+		normalizedPath := filepath.ToSlash(formattedPath)
+
+		if _, err := writer.Write([]byte(normalizedPath + "\n")); err != nil {
 			return err
 		}
 	}

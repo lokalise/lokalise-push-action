@@ -44,6 +44,34 @@ type UploadConfig struct {
 	UploadTimeout    int
 }
 
+// ringBuffer keeps only the last N bytes written.
+type ringBuffer struct {
+	buf   []byte
+	limit int
+}
+
+func newRingBuffer(n int) *ringBuffer { return &ringBuffer{limit: n} }
+
+func (r *ringBuffer) Write(p []byte) (int, error) {
+	if r.limit <= 0 {
+		return len(p), nil
+	}
+	// If incoming chunk is bigger than limit, keep only its tail.
+	if len(p) >= r.limit {
+		r.buf = append(r.buf[:0], p[len(p)-r.limit:]...)
+		return len(p), nil
+	}
+	need := len(r.buf) + len(p) - r.limit
+	if need > 0 {
+		// Drop the oldest bytes to make room.
+		r.buf = r.buf[need:]
+	}
+	r.buf = append(r.buf, p...)
+	return len(p), nil
+}
+
+func (r *ringBuffer) String() string { return string(r.buf) }
+
 func main() {
 	// Ensure the required command-line arguments are provided
 	if len(os.Args) < 4 {
@@ -105,37 +133,64 @@ func validate(config UploadConfig) {
 	}
 }
 
-// validateFile checks if the file exists and is not empty.
+// validateFile checks if the file exists
 func validateFile(filePath string) {
 	if filePath == "" {
 		returnWithError("File path is required and cannot be empty.")
 	}
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+
+	fi, err := os.Stat(filePath)
+	if os.IsNotExist(err) {
 		returnWithError(fmt.Sprintf("File %s does not exist.", filePath))
+	}
+	if err != nil {
+		returnWithError(fmt.Sprintf("Cannot stat file %s: %v", filePath, err))
+	}
+	if fi.IsDir() {
+		returnWithError(fmt.Sprintf("Path %s is a directory, not a file.", filePath))
 	}
 }
 
-// Call lokalise2 to upload files
+// executeUpload runs the command with a timeout, streams output to CI logs,
+// and returns an error that includes the last chunk of stderr (capped).
 func executeUpload(cmdPath string, args []string, uploadTimeout int) error {
-	// Timeout for the lokalise2 call
 	timeout := time.Duration(uploadTimeout) * time.Second
-
-	// Create a context with a timeout
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, cmdPath, args...)
-	cmd.Stdout = io.Discard
-	cmd.Stderr = os.Stderr
+
+	// Stream to job logs, but keep a capped copy of stderr for the error message.
+	const stderrMax = 64 * 1024 // last 64 KB
+	rb := newRingBuffer(stderrMax)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = io.MultiWriter(os.Stderr, rb)
 
 	err := cmd.Run()
 
-	// Check if the context was canceled due to timeout
-	if ctx.Err() == context.DeadlineExceeded {
-		return errors.New("command timed out")
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		tail := strings.TrimSpace(rb.String())
+		if tail != "" {
+			return fmt.Errorf("command timed out after %ds: %s", uploadTimeout, tail)
+		}
+		return fmt.Errorf("command timed out after %ds", uploadTimeout)
 	}
 
-	return err
+	if err != nil {
+		// Attach exit code if we have it, plus the stderr tail.
+		var ee *exec.ExitError
+		exit := ""
+		if errors.As(err, &ee) {
+			exit = fmt.Sprintf(" (exit %d)", ee.ExitCode())
+		}
+		tail := strings.TrimSpace(rb.String())
+		if tail != "" {
+			return fmt.Errorf("command failed%s: %s: %w", exit, tail, err)
+		}
+		return fmt.Errorf("command failed%s: %w", exit, err)
+	}
+
+	return nil
 }
 
 // uploadFile uploads a file to Lokalise using the lokalise2 CLI tool.
@@ -154,27 +209,34 @@ func uploadFile(config UploadConfig, uploadExecutor func(cmdPath string, args []
 
 		err := uploadExecutor("./bin/lokalise2", args, config.UploadTimeout)
 		if err == nil {
-			// Upload succeeded
 			fmt.Printf("Successfully uploaded file %s\n", config.FilePath)
 			return
 		}
 
-		// Check if the error is due to rate limiting (HTTP status code 429)
-		if isRateLimitError(err) {
-			// Sleep for the current sleep time before retrying
-			time.Sleep(time.Duration(sleepTime) * time.Second)
-
-			// Check if the total retry time has exceeded the maximum allowed time
-			if time.Since(startTime).Seconds() > maxTotalTime {
-				returnWithError(fmt.Sprintf("Max retry time exceeded (%d seconds) for %s. Exiting.", maxTotalTime, config.FilePath))
+		if isRetryableError(err) {
+			if attempt == config.MaxRetries {
+				returnWithError(fmt.Sprintf(
+					"Failed to upload file %s after %d attempts. Last error: %v",
+					config.FilePath, config.MaxRetries, err,
+				))
 			}
 
-			// Exponentially increase the sleep time for the next retry, capped at maxSleepTime
+			// Will we exceed the max total time by sleeping before the next attempt?
+			elapsed := time.Since(startTime)
+			if elapsed+time.Duration(sleepTime)*time.Second >= time.Duration(maxTotalTime)*time.Second {
+				returnWithError(fmt.Sprintf(
+					"Max retry time exceeded (%d seconds) for %s. Exiting.",
+					maxTotalTime, config.FilePath,
+				))
+			}
+
+			fmt.Printf("Retryable error detected (%v), sleeping %ds before retry...\n", err, sleepTime)
+			time.Sleep(time.Duration(sleepTime) * time.Second)
 			sleepTime = min(sleepTime*2, maxSleepTime)
-			continue // Retry the upload
+			continue
 		}
 
-		// If the error is not due to rate limiting, exit with an error message
+		// Non-retryable: fail fast.
 		returnWithError(fmt.Sprintf("Permanent error during upload for %s: %v", config.FilePath, err))
 	}
 
@@ -220,9 +282,38 @@ func constructArgs(config UploadConfig) []string {
 	return args
 }
 
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if isRateLimitError(err) {
+		return true
+	}
+
+	// Lowercase the message for case-insensitive matching
+	msg := strings.ToLower(err.Error())
+
+	// Timeouts or transient network failures
+	if strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "timed out") ||
+		strings.Contains(msg, "time exceeded") ||
+		strings.Contains(msg, "polling time exceeded limit") {
+		return true
+	}
+
+	return false
+}
+
 // isRateLimitError checks if the error is due to rate limiting (HTTP status code 429).
 func isRateLimitError(err error) bool {
-	return strings.Contains(err.Error(), "API request error 429")
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "api request error 429") ||
+		strings.Contains(s, "request error 429") ||
+		strings.Contains(s, "rate limit")
 }
 
 // min returns the smaller of two integers.
