@@ -27,7 +27,7 @@ inputs:
     required: false
     default: ''
   additional_params:
-    description: 'Additional parameters for Lokalise CLI on push. Find all supported options at https://github.com/lokalise/lokalise-cli-2-go/blob/main/docs/lokalise2_file_upload.md'
+    description: 'Additional parameters for Lokalise API on push. Find all supported options at https://developers.lokalise.com/reference/upload-a-file'
     required: false
     default: ''
   flat_naming:
@@ -62,12 +62,20 @@ inputs:
     description: 'Number of seconds to sleep before retrying'
     required: false
     default: 1
-  upload_timeout:
-    description: 'Timeout for the upload operation (in seconds)'
+  http_timeout:
+    description: 'Timeout for HTTP calls (in seconds)'
     required: false
     default: 120
-  upload_poll_timeout:
-    description: 'Timeout for the upload poll operation (in seconds)'
+  upload_timeout:
+    description: 'Timeout for the whole upload operation (in seconds)'
+    required: false
+    default: 600
+  poll_initial_wait:
+    description: 'Number of seconds to wait before polling the upload process for the first time'
+    required: false
+    default: 1
+  poll_max_wait:
+    description: 'Timeout for polling the upload process'
     required: false
     default: 120
   os_platform:
@@ -279,29 +287,23 @@ runs:
 
         echo "All files collected!"
 
-    - name: Install Lokalise CLIv2
-      if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
-      # lokalise/install-lokalise-cli-v2@v2.0.0
-      uses: lokalise/install-lokalise-cli-v2@e3dab54bcb8e779dab39712a65ee01a4d399871d
-      with:
-        target-version: 3.1.4
-        add-to-path: false
-
     - name: Push translation files to Lokalise
       if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
       id: push-translation-files
       shell: bash
       env:
         BASE_LANG: ${{ inputs.base_lang }}
-        CLI_ADD_PARAMS: ${{ inputs.additional_params }}
+        ADDITIONAL_PARAMS: ${{ inputs.additional_params }}
         MAX_RETRIES: ${{ inputs.max_retries }}
         SLEEP_TIME: ${{ inputs.sleep_on_retry }}
         UPLOAD_TIMEOUT: ${{ inputs.upload_timeout }}
-        UPLOAD_POLL_TIMEOUT: ${{ inputs.upload_poll_timeout }}
+        HTTP_TIMEOUT: ${{ inputs.http_timeout }}
         SKIP_TAGGING: ${{ inputs.skip_tagging }}
         SKIP_POLLING: ${{ inputs.skip_polling }}
+        POLL_INITIAL_WAIT: ${{ inputs.poll_initial_wait }}
+        POLL_MAX_WAIT: ${{ inputs.poll_max_wait }}
         SKIP_DEFAULT_FLAGS: ${{ inputs.skip_default_flags }}
-        PLATFORM: "${{ inputs.os_platform }}"
+        PLATFORM: ${{ inputs.os_platform }}
       run: |
         set -euo pipefail
 
