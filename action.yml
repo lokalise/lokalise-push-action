@@ -287,14 +287,6 @@ runs:
 
         echo "All files collected!"
 
-    - name: Install Lokalise CLIv2
-      if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
-      # lokalise/install-lokalise-cli-v2@v2.0.0
-      uses: lokalise/install-lokalise-cli-v2@e3dab54bcb8e779dab39712a65ee01a4d399871d
-      with:
-        target-version: 3.1.4
-        add-to-path: false
-
     - name: Push translation files to Lokalise
       if: steps.find-files.outputs.has_files == 'true' || steps.changed-files.outputs.any_changed == 'true'
       id: push-translation-files

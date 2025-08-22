@@ -162,14 +162,14 @@ func validateFile(filePath string) {
 }
 
 func uploadFile(ctx context.Context, cfg UploadConfig, factory ClientFactory) error {
-	fmt.Printf("Starting to upload file %s\n", cfg.FilePath)
-
 	uploader, err := factory.NewUploader(cfg)
 	if err != nil {
 		return fmt.Errorf("cannot create Lokalise API client: %w", err)
 	}
 
 	params := buildUploadParams(cfg)
+
+	fmt.Printf("Starting to upload file %s\n", cfg.FilePath)
 
 	if _, err := uploader.Upload(ctx, params, !cfg.SkipPolling); err != nil {
 		return fmt.Errorf("failed to upload file %s: %w", cfg.FilePath, err)
