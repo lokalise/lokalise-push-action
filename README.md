@@ -38,9 +38,11 @@ jobs:
             TRANSLATIONS_PATH1
             TRANSLATIONS_PATH2
           file_format: json
-          additional_params: |
-            --convert-placeholders
-            --hidden-from-contributors
+          additional_params: >
+            {
+              "convert_placeholders": true,
+              "hidden_from_contributors: true
+            }
 ```
 
 ## Configuration
@@ -58,12 +60,14 @@ You'll need to provide some parameters for the action. These can be set as envir
 
 ### File and CLI options
 
-- `additional_params` — Extra parameters to pass to the [Lokalise CLI when pushing files](https://github.com/lokalise/lokalise-cli-2-go/blob/main/docs/lokalise2_file_upload.md). For example, you can use `--convert-placeholders` to handle placeholders. Defaults to an empty string. Be careful when setting the `include-path` additional parameter to `false`, as it will mean your keys won't be assigned with any filename upon upload: this might pose a problem if you're planning to utilize the pull action to download translation back. You can include multiple CLI arguments as needed:
+- `additional_params` — Extra parameters to pass to the API. Defaults to an empty string. Be careful when setting the `include_path` additional parameter to `false`, as it will mean your keys won't be assigned with any filename upon upload: this might pose a problem if you're planning to utilize the pull action to download translation back. You can include multiple CLI arguments as needed:
 
 ```yaml
-additional_params: |
-  --convert-placeholders
-  --hidden-from-contributors
+additional_params: >
+  {
+    "convert_placeholders": true,
+    "hidden_from_contributors: true
+  }
 ```
 
 - `flat_naming` — Use flat naming convention. Set to `true` if your translation files follow a flat naming pattern like `locales/en.json` instead of `locales/en/file.json`. Defaults to `false`.
@@ -73,19 +77,24 @@ additional_params: |
     - `"custom_*.json"` matches files directly under the given path  
   This approach gives you fine-grained control similar to `flat_naming`, but with more flexibility.
 
-### Behavior and retry settings
+### Behavior settings
 
 - `skip_tagging` — Do not assign tags to the uploaded translation keys on Lokalise. Set this to `true` to skip adding tags like inserted, skipped, or updated keys. Defaults to `false`.
 - `skip_polling` — Skips waiting for the upload operation to complete. When set to `true`, the `upload_poll_timeout` parameter is ignored. Defaults to `false`.
-- `skip_default_flags` — Prevents the action from setting additional default flags for the `upload` command. By default, the action includes `--replace-modified --include-path --distinguish-by-file`. When `skip_default_flags` is `true`, these flags are not added. Defaults to `false`.
+- `skip_default_flags` — Prevents the action from setting additional default flags for the `upload` command. By default, the action includes `replace_modified`, `include_path`, and `distinguish_by_file` set to `true`. When `skip_default_flags` is `true`, these parameters are not added. Defaults to `false`.
 - `rambo_mode` — Always upload all translation files for the base language regardless of changes. Set this to `true` to bypass change detection and force a full upload of all base language translation files. Defaults to `false`.
 - `use_tag_tracking` — Enables branch-specific sync tracking using Git tags. When set to `true`, the action creates a unique tag for each branch to remember the last successfully synced commit. On subsequent runs, it compares the current commit against the tagged commit to detect all changes since the last successful sync — regardless of how many commits occurred in between. This feature is still experimental.
   + By default, when `use_tag_tracking` is `false`, the action compares just the last two commits (`HEAD` and `HEAD~1`) to determine what changed. Enabling `use_tag_tracking` allows the action to detect broader changes across multiple commits and ensure nothing gets skipped during uploads.
   + This parameter has no effect if the `rambo_mode` is set to `true`.
-- `max_retries` — Maximum number of retries on rate limit errors (HTTP 429). Defaults to `3`.
-- `sleep_on_retry` — Number of seconds to sleep before retrying on rate limit errors. Defaults to `1`.
-- `upload_timeout` — Timeout for the upload operation, in seconds. Defaults to `120`.
-- `upload_poll_timeout` — Timeout for the upload poll operation, in seconds. Defaults to `120`.
+
+### Retries and timeouts
+
+- `max_retries` — Maximum number of retries on rate limit (HTTP 429) and other retryable errors. Defaults to `3`.
+- `sleep_on_retry` — Number of seconds to sleep before retrying on retryable errors (exponential backoff applies). Defaults to `1`.
+- `upload_timeout` — Timeout for the whole upload operation, in seconds. Defaults to `600`.
+- `poll_initial_wait` — Initial timeout for the upload poll operation, in seconds. Defaults to `1`.
+- `poll_max_wait` — Maximum timeout for the upload poll operation, in seconds. Defaults to `120`.
+- `http_timeout` — Timeout in seconds for every HTTP operation. Defaults to `120`.
 
 ### Git configuration
 
