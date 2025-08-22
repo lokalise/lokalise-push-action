@@ -29,7 +29,7 @@ jobs:
           fetch-depth: 0
 
       - name: Push to Lokalise
-        uses: lokalise/lokalise-push-action@v3.8.1
+        uses: lokalise/lokalise-push-action@v4.0.0
         with:
           api_token: ${{ secrets.LOKALISE_API_TOKEN }}
           project_id: LOKALISE_PROJECT_ID
@@ -41,7 +41,7 @@ jobs:
           additional_params: >
             {
               "convert_placeholders": true,
-              "hidden_from_contributors: true
+              "hidden_from_contributors": true
             }
 ```
 
@@ -58,17 +58,7 @@ You'll need to provide some parameters for the action. These can be set as envir
 - `base_lang` — The base language of your project (e.g., `en` for English). Defaults to `en`.
 - `file_ext` (*not strictly mandatory but still recommended*) — Custom file extension to use when searching for translation files (without leading dot, for example `yml`). By default, the extension is inferred from the `file_format` value. However, for certain formats (e.g., `json_structured`), the files may still have a generic extension (e.g., `.json`). In such cases, this parameter allows specifying the correct extension manually to ensure proper file matching. This parameter has no effect when the `name_pattern` is provided.
 
-### File and CLI options
-
-- `additional_params` — Extra parameters to pass to the API. Defaults to an empty string. Be careful when setting the `include_path` additional parameter to `false`, as it will mean your keys won't be assigned with any filename upon upload: this might pose a problem if you're planning to utilize the pull action to download translation back. You can include multiple CLI arguments as needed:
-
-```yaml
-additional_params: >
-  {
-    "convert_placeholders": true,
-    "hidden_from_contributors: true
-  }
-```
+### File and API options
 
 - `flat_naming` — Use flat naming convention. Set to `true` if your translation files follow a flat naming pattern like `locales/en.json` instead of `locales/en/file.json`. Defaults to `false`.
 - `name_pattern` — Custom pattern for naming translation files. Overrides default language-based naming. Must include both filename and extension if applicable (e.g., `"custom_name.json"` or `"**.yaml"`). Default behavior is used if not set.  
@@ -76,11 +66,20 @@ additional_params: >
     - `"en/**/custom_*.json"` will match nested files for the `en` locale  
     - `"custom_*.json"` matches files directly under the given path  
   This approach gives you fine-grained control similar to `flat_naming`, but with more flexibility.
+- `additional_params` — Extra parameters to pass to the [Upload file API endpoint](https://developers.lokalise.com/reference/upload-a-file). Must contain valid JSON. Defaults to an empty string. Be careful when setting the `include_path` additional parameter to `false`, as it will mean your keys won't be assigned with any filename upon upload: this might pose a problem if you're planning to utilize the pull action to download translation back. You can include multiple API parameters as needed:
+
+```yaml
+additional_params: >
+  {
+    "convert_placeholders": true,
+    "hidden_from_contributors": true
+  }
+```
 
 ### Behavior settings
 
 - `skip_tagging` — Do not assign tags to the uploaded translation keys on Lokalise. Set this to `true` to skip adding tags like inserted, skipped, or updated keys. Defaults to `false`.
-- `skip_polling` — Skips waiting for the upload operation to complete. When set to `true`, the `upload_poll_timeout` parameter is ignored. Defaults to `false`.
+- `skip_polling` — Skips waiting for the upload operation to complete. When set to `true`, the `poll_initial_wait` and `poll_max_wait` parameters are ignored. Defaults to `false`.
 - `skip_default_flags` — Prevents the action from setting additional default flags for the `upload` command. By default, the action includes `replace_modified`, `include_path`, and `distinguish_by_file` set to `true`. When `skip_default_flags` is `true`, these parameters are not added. Defaults to `false`.
 - `rambo_mode` — Always upload all translation files for the base language regardless of changes. Set this to `true` to bypass change detection and force a full upload of all base language translation files. Defaults to `false`.
 - `use_tag_tracking` — Enables branch-specific sync tracking using Git tags. When set to `true`, the action creates a unique tag for each branch to remember the last successfully synced commit. On subsequent runs, it compares the current commit against the tagged commit to detect all changes since the last successful sync — regardless of how many commits occurred in between. This feature is still experimental.
@@ -148,21 +147,19 @@ For more information on assumptions, refer to the [Assumptions and defaults](htt
 
 ### Default parameters for the push action
 
-By default, the following command-line parameters are set when uploading files to Lokalise:
+By default, the following API parameters and headers are set when uploading files to Lokalise:
 
-- `--token` — Derived from the `api_token` parameter.
-- `--project-id` — Derived from the `project_id` parameter.
-- `--file` — The currently uploaded file.
-- `--lang-iso` — The language ISO code of the translation file.
-- `--replace-modified`
-- `--include-path`
-- `--distinguish-by-file`
-- `--poll`
-- `--poll-timeout` — Derived from the `upload_poll_timeout` parameter.
-- `--tag-inserted-keys`
-- `--tag-skipped-keys`
-- `--tag-updated-keys`
-- `--tags` — Set to the branch name that triggered the workflow.
+- `X-Api-Token` header — Derived from the `api_token` parameter.
+- `project_id` GET param — Derived from the `project_id` parameter.
+- `filename` — The currently uploaded file.
+- `lang_iso` — The language ISO code of the translation file.
+- `replace_modified` — Set to `true`.
+- `include_path` — Set to `true`.
+- `distinguish_by_file` — Set to `true`.
+- `tag_inserted_keys` — Set to `true`.
+- `tag_skipped_keys` — Set to `true`.
+- `tag_updated_keys` — Set to `true`.
+- `tags` — Set to the branch name that triggered the workflow.
 
 ## License
 

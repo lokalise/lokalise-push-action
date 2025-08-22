@@ -101,7 +101,7 @@ func main() {
 		Token:            os.Args[3],
 		LangISO:          os.Getenv("BASE_LANG"),
 		GitHubRefName:    os.Getenv("GITHUB_REF_NAME"),
-		AdditionalParams: os.Getenv("CLI_ADD_PARAMS"),
+		AdditionalParams: os.Getenv("ADDITIONAL_PARAMS"),
 		SkipTagging:      skipTagging,
 		SkipPolling:      skipPolling,
 		SkipDefaultFlags: skipDefaultFlags,

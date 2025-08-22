@@ -27,7 +27,7 @@ inputs:
     required: false
     default: ''
   additional_params:
-    description: 'Additional parameters for Lokalise CLI on push. Find all supported options at https://github.com/lokalise/lokalise-cli-2-go/blob/main/docs/lokalise2_file_upload.md'
+    description: 'Additional parameters for Lokalise API on push. Find all supported options at https://developers.lokalise.com/reference/upload-a-file'
     required: false
     default: ''
   flat_naming:
@@ -293,7 +293,7 @@ runs:
       shell: bash
       env:
         BASE_LANG: ${{ inputs.base_lang }}
-        CLI_ADD_PARAMS: ${{ inputs.additional_params }}
+        ADDITIONAL_PARAMS: ${{ inputs.additional_params }}
         MAX_RETRIES: ${{ inputs.max_retries }}
         SLEEP_TIME: ${{ inputs.sleep_on_retry }}
         UPLOAD_TIMEOUT: ${{ inputs.upload_timeout }}
