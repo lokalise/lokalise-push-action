@@ -1,876 +1,411 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"io"
-	"log"
 	"os"
-	"os/exec"
 	"reflect"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bodrovis/lokex/client"
 )
 
 func TestMain(m *testing.M) {
-	// Override exitFunc for testing
-	exitFunc = func(code int) {
-		panic(fmt.Sprintf("Exit called with code %d", code))
-	}
+	// hijack os.Exit so we can assert hard exits
+	exitFunc = func(code int) { panic(fmt.Sprintf("Exit called with code %d", code)) }
 
-	// Run tests
 	code := m.Run()
 
-	// Restore exitFunc after testing (optional)
+	// restore
 	exitFunc = os.Exit
-
 	os.Exit(code)
 }
 
-func TestExecuteUploadTimeout_Integration(t *testing.T) {
-	// Build the mock sleep binary
-	mockBinary := "./fixtures/sleep/mock_sleep"
-	if runtime.GOOS == "windows" {
-		mockBinary += ".exe"
-	}
-	buildMockBinaryIfNeeded(t, "./fixtures/sleep/sleep.go", mockBinary)
+// ---------- buildUploadParams tests ----------
 
-	args := []string{"sleep"} // makes the fixture sleep 2s
-	uploadTimeout := 1        // 1s timeout so it should trip
-
-	err := executeUpload(mockBinary, args, uploadTimeout)
-	if err == nil {
-		t.Fatalf("expected timeout error, got nil")
-	}
-
-	// Be robust against optional stderr suffix; just check the prefix
-	wantPrefix := fmt.Sprintf("command timed out after %ds", uploadTimeout)
-	if !strings.HasPrefix(err.Error(), wantPrefix) {
-		t.Fatalf("want error prefix %q, got %q", wantPrefix, err.Error())
-	}
-}
-
-func TestExecuteUpload_RateLimitStderrDetected(t *testing.T) {
-	// Build the 429-stderr binary
-	bin := "./fixtures/exit_429/exit_429"
-	if runtime.GOOS == "windows" {
-		bin += ".exe"
-	}
-	buildMockBinaryIfNeeded(t, "./fixtures/exit_429/exit_429.go", bin)
-
-	// No args, immediate exit with 429-ish stderr
-	err := executeUpload(bin, nil, 3)
-	if err == nil {
-		t.Fatalf("expected non-nil error from 429 mock")
-	}
-	if !isRateLimitError(err) {
-		t.Fatalf("expected isRateLimitError to be true; got err=%q", err.Error())
-	}
-}
-
-func TestExecuteUpload_NonRateLimitError(t *testing.T) {
-	// Build the non-429-stderr binary
-	bin := "./fixtures/exit_err/exit_err"
-	if runtime.GOOS == "windows" {
-		bin += ".exe"
-	}
-	buildMockBinaryIfNeeded(t, "./fixtures/exit_err/exit_err.go", bin)
-
-	err := executeUpload(bin, nil, 3)
-	if err == nil {
-		t.Fatalf("expected non-nil error from error mock")
-	}
-	if isRateLimitError(err) {
-		t.Fatalf("expected isRateLimitError to be false; got err=%q", err.Error())
-	}
-}
-
-func TestUploadFile_RetriesOnRateLimit_WithMock(t *testing.T) {
+func TestBuildUploadParams_MergesAndDefaults(t *testing.T) {
 	cfg := UploadConfig{
-		FilePath:      "testfile_retry.json",
-		ProjectID:     "test_project",
-		Token:         "test_token",
-		LangISO:       "en",
-		GitHubRefName: "main",
-		MaxRetries:    3,
-		SleepTime:     0,
-		UploadTimeout: 120,
+		FilePath:         "/tmp/en.json",
+		LangISO:          "en",
+		GitHubRefName:    "release-2025-08-21",
+		SkipTagging:      false,
+		SkipDefaultFlags: false,
+		AdditionalParams: `
+{
+  "convert_placeholders": true,
+  "custom_bool": false,
+  "tags": ["custom-tag-1","custom-tag-2"]
+}`,
 	}
 
-	// temp file so validateFile passes
-	f, err := os.Create(cfg.FilePath)
-	if err != nil {
-		t.Fatalf("create temp file: %v", err)
-	}
-	_ = f.Close()
-	defer os.Remove(cfg.FilePath)
+	p := buildUploadParams(cfg)
 
-	call := 0
-	mockExec := func(cmdPath string, args []string, uploadTimeout int) error {
-		call++
-		if call == 1 {
-			return fmt.Errorf("API request error 429: boom")
+	want := client.UploadParams{
+		"filename":             "/tmp/en.json",
+		"lang_iso":             "en",
+		"replace_modified":     true,
+		"include_path":         true,
+		"distinguish_by_file":  true,
+		"convert_placeholders": true,
+		"custom_bool":          false,
+		// tags merged from AdditionalParams; your code prefers whatever user passed there.
+		"tags":              []any{"custom-tag-1", "custom-tag-2"},
+		"tag_inserted_keys": true,
+		"tag_skipped_keys":  true,
+		"tag_updated_keys":  true,
+	}
+
+	// we tolerate []string vs []any for slices
+	normalize := func(v any) any {
+		switch s := v.(type) {
+		case []string:
+			out := make([]any, len(s))
+			for i := range s {
+				out[i] = s[i]
+			}
+			return out
+		default:
+			return v
 		}
-		return nil
+	}
+	got := map[string]any{}
+	for k, v := range p {
+		got[k] = normalize(v)
+	}
+	exp := map[string]any{}
+	for k, v := range want {
+		exp[k] = normalize(v)
 	}
 
-	done := make(chan struct{})
-	go func() {
-		uploadFile(cfg, mockExec)
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		// success
-	case <-time.After(2 * time.Second):
-		t.Fatalf("uploadFile did not complete in time (likely stuck)")
-	}
-
-	if call != 2 {
-		t.Fatalf("expected 2 calls (1 retry), got %d", call)
+	if !reflect.DeepEqual(got, exp) {
+		t.Fatalf("params mismatch.\n got: %#v\nwant: %#v", got, exp)
 	}
 }
 
-func TestUploadFile(t *testing.T) {
-	type (
-		execFn = func(cmdPath string, args []string, uploadTimeout int) error
-	)
-	tests := []struct {
-		name         string
-		config       UploadConfig
-		mockExecutor execFn
-		shouldError  bool
-		wantCalls    int // optional: -1 to skip checking
-	}{
-		{
-			name: "Successful upload",
-			config: UploadConfig{
-				FilePath:      "testfile_success.json",
-				ProjectID:     "test_project",
-				Token:         "test_token",
-				LangISO:       "en",
-				GitHubRefName: "main",
-				MaxRetries:    3,
-				SleepTime:     0,
-				UploadTimeout: 120,
-			},
-			mockExecutor: func(_ string, _ []string, _ int) error {
-				return nil
-			},
-			shouldError: false,
-			wantCalls:   1,
-		},
-		{
-			name: "Rate-limited then succeed (retryable)",
-			config: UploadConfig{
-				FilePath:      "testfile_retry.json",
-				ProjectID:     "test_project",
-				Token:         "test_token",
-				LangISO:       "en",
-				GitHubRefName: "main",
-				MaxRetries:    3,
-				SleepTime:     0,
-				UploadTimeout: 120,
-			},
-			mockExecutor: func() execFn {
-				call := 0
-				return func(_ string, _ []string, _ int) error {
-					call++
-					if call == 1 {
-						return errors.New("API request error 429: Rate limit exceeded")
-					}
-					return nil
-				}
-			}(),
-			shouldError: false,
-			wantCalls:   2,
-		},
-		{
-			name: "Timeout then succeed (retryable)",
-			config: UploadConfig{
-				FilePath:      "testfile_timeout.json",
-				ProjectID:     "test_project",
-				Token:         "test_token",
-				LangISO:       "en",
-				GitHubRefName: "main",
-				MaxRetries:    3,
-				SleepTime:     0,
-				UploadTimeout: 120,
-			},
-			mockExecutor: func() execFn {
-				call := 0
-				return func(_ string, _ []string, _ int) error {
-					call++
-					if call == 1 {
-						return errors.New("command timed out after 10s") // produced by executeUpload on ctx deadline
-					}
-					return nil
-				}
-			}(),
-			shouldError: false,
-			wantCalls:   2,
-		},
-		{
-			name: "Polling exceeded then succeed (retryable)",
-			config: UploadConfig{
-				FilePath:      "testfile_poll.json",
-				ProjectID:     "test_project",
-				Token:         "test_token",
-				LangISO:       "en",
-				GitHubRefName: "main",
-				MaxRetries:    3,
-				SleepTime:     0,
-				UploadTimeout: 120,
-			},
-			mockExecutor: func() execFn {
-				call := 0
-				return func(_ string, _ []string, _ int) error {
-					call++
-					if call == 1 {
-						return errors.New("Polling time exceeded limit")
-					}
-					return nil
-				}
-			}(),
-			shouldError: false,
-			wantCalls:   2,
-		},
-		{
-			name: "Permanent error (non-retryable) — no retry",
-			config: UploadConfig{
-				FilePath:      "testfile_error.json",
-				ProjectID:     "test_project",
-				Token:         "test_token",
-				LangISO:       "en",
-				GitHubRefName: "main",
-				MaxRetries:    5,
-				SleepTime:     0,
-				UploadTimeout: 120,
-			},
-			mockExecutor: func(_ string, _ []string, _ int) error {
-				return errors.New("Permanent error")
-			},
-			shouldError: true,
-			wantCalls:   1,
-		},
-		{
-			name: "Retryable forever — max retries exhausted",
-			config: UploadConfig{
-				FilePath:      "testfile_max_retries.json",
-				ProjectID:     "test_project",
-				Token:         "test_token",
-				LangISO:       "en",
-				GitHubRefName: "main",
-				MaxRetries:    3,
-				SleepTime:     0,
-				UploadTimeout: 120,
-			},
-			mockExecutor: func() execFn {
-				calls := 0
-				return func(_ string, _ []string, _ int) error {
-					calls++
-					return errors.New("API request error 429") // always retryable
-				}
-			}(),
-			shouldError: true,
-			wantCalls:   3, // exactly MaxRetries attempts
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			// temp file so validateFile passes
-			if tt.config.FilePath != "" {
-				f, err := os.Create(tt.config.FilePath)
-				if err != nil {
-					t.Fatalf("create temp file: %v", err)
-				}
-				_ = f.Close()
-				defer os.Remove(tt.config.FilePath)
-			}
-
-			// wrap the mock to count calls
-			callCount := 0
-			wrapped := func(cmdPath string, args []string, uploadTimeout int) error {
-				callCount++
-				return tt.mockExecutor(cmdPath, args, uploadTimeout)
-			}
-
-			defer func() {
-				r := recover()
-				if tt.shouldError && r == nil {
-					t.Errorf("Expected error (panic), got none")
-				}
-				if !tt.shouldError && r != nil {
-					t.Errorf("Unexpected error: %v", r)
-				}
-				if tt.wantCalls > 0 && callCount != tt.wantCalls {
-					t.Errorf("call count mismatch: want %d got %d", tt.wantCalls, callCount)
-				}
-			}()
-
-			uploadFile(tt.config, wrapped)
-		})
-	}
-}
-
-func TestExecuteUpload_WrapsExitErrorAndStderr(t *testing.T) {
-	bin := "./fixtures/exit_err/exit_err"
-	if runtime.GOOS == "windows" {
-		bin += ".exe"
-	}
-	buildMockBinaryIfNeeded(t, "./fixtures/exit_err/exit_err.go", bin)
-
-	err := executeUpload(bin, nil, 3)
-	if err == nil {
-		t.Fatalf("expected error")
-	}
-	if !strings.Contains(err.Error(), "some permanent error happened") {
-		t.Fatalf("stderr not included: %q", err.Error())
-	}
-	var exitErr *exec.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected wrapped exec.ExitError")
-	}
-}
-
-func TestUploadFile_MaxRetriesCallCount(t *testing.T) {
+func TestBuildUploadParams_EmptyAdditional_UsesDefaults(t *testing.T) {
 	cfg := UploadConfig{
-		FilePath:      "retry_forever.json",
-		ProjectID:     "p",
-		Token:         "tok",
+		FilePath:         "/tmp/en.json",
+		LangISO:          "en",
+		GitHubRefName:    "release-1",
+		SkipTagging:      false,
+		SkipDefaultFlags: false,
+		AdditionalParams: "",
+	}
+	p := buildUploadParams(cfg)
+
+	if p["filename"] != "/tmp/en.json" {
+		t.Fatalf("filename wrong: %v", p["filename"])
+	}
+	if p["lang_iso"] != "en" {
+		t.Fatalf("lang_iso wrong: %v", p["lang_iso"])
+	}
+	// default flags present
+	if p["replace_modified"] != true || p["include_path"] != true || p["distinguish_by_file"] != true {
+		t.Fatalf("default flags not set correctly: %#v", p)
+	}
+	// tagging present & includes GitHub ref
+	switch tags := p["tags"].(type) {
+	case []string:
+		if len(tags) != 1 || tags[0] != "release-1" {
+			t.Fatalf("tags wrong: %#v", tags)
+		}
+	case []any:
+		if len(tags) != 1 || tags[0] != "release-1" {
+			t.Fatalf("tags wrong: %#v", tags)
+		}
+	default:
+		t.Fatalf("tags type wrong: %T", p["tags"])
+	}
+	if p["tag_inserted_keys"] != true || p["tag_skipped_keys"] != true || p["tag_updated_keys"] != true {
+		t.Fatalf("tag_* flags missing")
+	}
+}
+
+func TestBuildUploadParams_SkipFlagsAndTags(t *testing.T) {
+	cfg := UploadConfig{
+		FilePath:         "/tmp/en.json",
+		LangISO:          "en",
+		GitHubRefName:    "release-1",
+		SkipTagging:      true,
+		SkipDefaultFlags: true,
+	}
+	p := buildUploadParams(cfg)
+
+	if _, ok := p["replace_modified"]; ok {
+		t.Fatalf("replace_modified should be omitted when SkipDefaultFlags=true")
+	}
+	if _, ok := p["tags"]; ok {
+		t.Fatalf("tags should be omitted when SkipTagging=true")
+	}
+	if _, ok := p["tag_inserted_keys"]; ok {
+		t.Fatalf("tag_* should be omitted when SkipTagging=true")
+	}
+}
+
+func TestBuildUploadParams_BadJSON_Aborts(t *testing.T) {
+	cfg := UploadConfig{
+		FilePath:         "/tmp/en.json",
+		LangISO:          "en",
+		GitHubRefName:    "ref",
+		AdditionalParams: `{"convert_placeholders": true,`, // broken
+	}
+	requirePanicExit(t, func() { _ = buildUploadParams(cfg) })
+}
+
+// ---------- uploadFile tests ----------
+
+func TestUploadFile_Success_PollingEnabled(t *testing.T) {
+	cfg := UploadConfig{
+		FilePath:         "tmp/en.json",
+		ProjectID:        "proj_123",
+		Token:            "tok_abc",
+		LangISO:          "en",
+		GitHubRefName:    "v1.0.0",
+		SkipTagging:      false,
+		SkipDefaultFlags: false,
+		SkipPolling:      false, // -> poll=true
+		MaxRetries:       7,
+		InitialSleepTime: 2 * time.Second,
+		MaxSleepTime:     30 * time.Second,
+		HTTPTimeout:      25 * time.Second,
+		PollInitialWait:  1 * time.Second,
+		PollMaxWait:      10 * time.Second,
+	}
+
+	fu := &fakeUploader{returnPID: "upl_123"}
+	ff := &fakeUploadFactory{uploader: fu}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	if err := uploadFile(ctx, cfg, ff); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+
+	// factory knobs captured
+	if ff.gotToken != "tok_abc" || ff.gotProjectID != "proj_123" {
+		t.Fatalf("factory creds wrong: tok=%s proj=%s", ff.gotToken, ff.gotProjectID)
+	}
+	if ff.gotRetries != 7 || ff.gotHTTPTO != 25*time.Second {
+		t.Fatalf("retries/httpTO wrong: %d / %v", ff.gotRetries, ff.gotHTTPTO)
+	}
+	if ff.gotInitialBackoff != 2*time.Second || ff.gotMaxBackoff != 30*time.Second {
+		t.Fatalf("backoff wrong: %v / %v", ff.gotInitialBackoff, ff.gotMaxBackoff)
+	}
+	if ff.gotPollInit != 1*time.Second || ff.gotPollMax != 10*time.Second {
+		t.Fatalf("poll waits wrong: %v / %v", ff.gotPollInit, ff.gotPollMax)
+	}
+
+	// uploader call captured
+	if !fu.called {
+		t.Fatalf("expected Upload to be called")
+	}
+	if fu.gotPoll != true {
+		t.Fatalf("expected poll=true, got %v", fu.gotPoll)
+	}
+	if fu.gotParams["filename"] != "tmp/en.json" || fu.gotParams["lang_iso"] != "en" {
+		t.Fatalf("params wrong: %#v", fu.gotParams)
+	}
+	// basic default flags present
+	if fu.gotParams["replace_modified"] != true || fu.gotParams["include_path"] != true {
+		t.Fatalf("default flags missing: %#v", fu.gotParams)
+	}
+}
+
+func TestUploadFile_Success_PollingDisabled(t *testing.T) {
+	cfg := UploadConfig{
+		FilePath:         "/tmp/en.json",
+		ProjectID:        "proj_123",
+		Token:            "tok_abc",
+		LangISO:          "en",
+		GitHubRefName:    "v1.0.0",
+		SkipPolling:      true, // -> poll=false
+		MaxRetries:       3,
+		InitialSleepTime: 1 * time.Second,
+		MaxSleepTime:     10 * time.Second,
+		HTTPTimeout:      20 * time.Second,
+		PollInitialWait:  2 * time.Second,
+		PollMaxWait:      5 * time.Second,
+	}
+
+	fu := &fakeUploader{returnPID: "upl_999"}
+	ff := &fakeUploadFactory{uploader: fu}
+
+	if err := uploadFile(context.Background(), cfg, ff); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	if fu.gotPoll != false {
+		t.Fatalf("expected poll=false, got %v", fu.gotPoll)
+	}
+}
+
+func TestUploadFile_FactoryError(t *testing.T) {
+	cfg := UploadConfig{
+		FilePath:         "/tmp/en.json",
+		ProjectID:        "proj_123",
+		Token:            "tok_abc",
+		LangISO:          "en",
+		GitHubRefName:    "main",
+		MaxRetries:       1,
+		InitialSleepTime: 1 * time.Second,
+		MaxSleepTime:     5 * time.Second,
+		HTTPTimeout:      10 * time.Second,
+	}
+
+	ff := &fakeUploadFactory{wantErr: errors.New("boom")}
+	err := uploadFile(context.Background(), cfg, ff)
+	if err == nil || !strings.Contains(err.Error(), "cannot create Lokalise API client") {
+		t.Fatalf("expected factory error to propagate, got: %v", err)
+	}
+}
+
+func TestUploadFile_UploadError(t *testing.T) {
+	cfg := UploadConfig{
+		FilePath:      "/tmp/en.json",
+		ProjectID:     "proj_123",
+		Token:         "tok_abc",
 		LangISO:       "en",
 		GitHubRefName: "main",
-		MaxRetries:    4,
-		SleepTime:     0, // keep fast
-		UploadTimeout: 1,
-	}
-	f, _ := os.Create(cfg.FilePath)
-	f.Close()
-	defer os.Remove(cfg.FilePath)
-
-	var calls int
-	mockExec := func(cmdPath string, args []string, uploadTimeout int) error {
-		calls++
-		return fmt.Errorf("API request error 429: nope")
 	}
 
+	fu := &fakeUploader{returnErr: errors.New("network down")}
+	ff := &fakeUploadFactory{uploader: fu}
+
+	err := uploadFile(context.Background(), cfg, ff)
+	if err == nil || !strings.Contains(err.Error(), "failed to upload file") {
+		t.Fatalf("expected wrapped upload error, got: %v", err)
+	}
+}
+
+// ---------- validate() / validateFile() tests ----------
+
+func TestValidate_ExitsOnMissingFields(t *testing.T) {
+	// missing file path
+	requirePanicExit(t, func() {
+		validate(UploadConfig{
+			FilePath:      "",
+			ProjectID:     "p",
+			Token:         "t",
+			LangISO:       "en",
+			GitHubRefName: "ref",
+		})
+	})
+
+	// missing project id
+	requirePanicExit(t, func() {
+		validate(UploadConfig{
+			FilePath:      "/tmp/en.json",
+			ProjectID:     "",
+			Token:         "t",
+			LangISO:       "en",
+			GitHubRefName: "ref",
+		})
+	})
+
+	// missing token
+	requirePanicExit(t, func() {
+		validate(UploadConfig{
+			FilePath:      "/tmp/en.json",
+			ProjectID:     "p",
+			Token:         "",
+			LangISO:       "en",
+			GitHubRefName: "ref",
+		})
+	})
+
+	// missing lang
+	requirePanicExit(t, func() {
+		validate(UploadConfig{
+			FilePath:      "/tmp/en.json",
+			ProjectID:     "p",
+			Token:         "t",
+			LangISO:       "",
+			GitHubRefName: "ref",
+		})
+	})
+
+	// missing GitHubRefName
+	requirePanicExit(t, func() {
+		validate(UploadConfig{
+			FilePath:      "/tmp/en.json",
+			ProjectID:     "p",
+			Token:         "t",
+			LangISO:       "en",
+			GitHubRefName: "",
+		})
+	})
+}
+
+// ---------- fakes & helpers ----------
+
+type fakeUploader struct {
+	called    bool
+	gotCtx    context.Context
+	gotParams client.UploadParams
+	gotPoll   bool
+
+	returnPID string
+	returnErr error
+}
+
+func (f *fakeUploader) Upload(ctx context.Context, params client.UploadParams, poll bool) (string, error) {
+	f.called = true
+	f.gotCtx = ctx
+	f.gotParams = params
+	f.gotPoll = poll
+	return f.returnPID, f.returnErr
+}
+
+type fakeUploadFactory struct {
+	wantErr error
+
+	// capture args to assert
+	gotToken          string
+	gotProjectID      string
+	gotRetries        int
+	gotHTTPTO         time.Duration
+	gotInitialBackoff time.Duration
+	gotMaxBackoff     time.Duration
+	gotPollInit       time.Duration
+	gotPollMax        time.Duration
+
+	uploader Uploader
+}
+
+func (f *fakeUploadFactory) NewUploader(cfg UploadConfig) (Uploader, error) {
+	f.gotToken = cfg.Token
+	f.gotProjectID = cfg.ProjectID
+	f.gotRetries = cfg.MaxRetries
+	f.gotHTTPTO = cfg.HTTPTimeout
+	f.gotInitialBackoff = cfg.InitialSleepTime
+	f.gotMaxBackoff = cfg.MaxSleepTime
+	f.gotPollInit = cfg.PollInitialWait
+	f.gotPollMax = cfg.PollMaxWait
+
+	if f.wantErr != nil {
+		return nil, f.wantErr
+	}
+	if f.uploader == nil {
+		return &fakeUploader{returnPID: "upl_default"}, nil
+	}
+	return f.uploader, nil
+}
+
+// requirePanicExit asserts the TestMain exit panic is thrown.
+func requirePanicExit(t *testing.T, fn func()) {
+	t.Helper()
 	defer func() {
-		if r := recover(); r == nil {
-			t.Fatalf("expected panic after retries exhausted")
+		r := recover()
+		if r == nil {
+			t.Fatalf("expected panic from exitFunc, got none")
 		}
-		if calls != cfg.MaxRetries {
-			t.Fatalf("expected %d attempts, got %d", cfg.MaxRetries, calls)
-		}
-	}()
-	uploadFile(cfg, mockExec)
-}
-
-func TestValidate(t *testing.T) {
-	tests := []struct {
-		name        string
-		config      UploadConfig
-		shouldError bool
-	}{
-		{
-			name: "Valid configuration",
-			config: UploadConfig{
-				FilePath:      "valid_file.json",
-				ProjectID:     "valid_project_id",
-				Token:         "valid_token",
-				LangISO:       "en",
-				GitHubRefName: "main",
-				PollTimeout:   120,
-			},
-			shouldError: false,
-		},
-		{
-			name: "Missing FilePath",
-			config: UploadConfig{
-				FilePath:      "",
-				ProjectID:     "valid_project_id",
-				Token:         "valid_token",
-				LangISO:       "en",
-				GitHubRefName: "main",
-				PollTimeout:   120,
-			},
-			shouldError: true,
-		},
-		{
-			name: "Non-existent FilePath",
-			config: UploadConfig{
-				FilePath:      "non_existent_file.json",
-				ProjectID:     "valid_project_id",
-				Token:         "valid_token",
-				LangISO:       "en",
-				GitHubRefName: "main",
-				PollTimeout:   120,
-			},
-			shouldError: true,
-		},
-		{
-			name: "Missing ProjectID",
-			config: UploadConfig{
-				FilePath:      "valid_file.json",
-				ProjectID:     "",
-				Token:         "valid_token",
-				LangISO:       "en",
-				GitHubRefName: "main",
-				PollTimeout:   120,
-			},
-			shouldError: true,
-		},
-		{
-			name: "Missing Token",
-			config: UploadConfig{
-				FilePath:      "valid_file.json",
-				ProjectID:     "valid_project_id",
-				Token:         "",
-				LangISO:       "en",
-				GitHubRefName: "main",
-				PollTimeout:   120,
-			},
-			shouldError: true,
-		},
-		{
-			name: "Missing LangISO",
-			config: UploadConfig{
-				FilePath:      "valid_file.json",
-				ProjectID:     "valid_project_id",
-				Token:         "valid_token",
-				LangISO:       "",
-				GitHubRefName: "main",
-				PollTimeout:   120,
-			},
-			shouldError: true,
-		},
-		{
-			name: "Missing GitHubRefName",
-			config: UploadConfig{
-				FilePath:      "valid_file.json",
-				ProjectID:     "valid_project_id",
-				Token:         "valid_token",
-				LangISO:       "en",
-				GitHubRefName: "",
-				PollTimeout:   120,
-			},
-			shouldError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt // Capture range variable
-
-		t.Run(tt.name, func(t *testing.T) {
-			// Create a temporary file if needed
-			if tt.config.FilePath != "" && tt.config.FilePath != "non_existent_file.json" {
-				f, err := os.Create(tt.config.FilePath)
-				if err != nil {
-					t.Fatalf("Failed to create temp file: %v", err)
-				}
-				err = f.Close()
-				if err != nil {
-					log.Printf("Failed to close %s: %v", tt.config.FilePath, err)
-				}
-				defer func() {
-					if err := os.Remove(tt.config.FilePath); err != nil {
-						log.Printf("Failed to remove %s: %v", tt.config.FilePath, err)
-					}
-				}()
-			}
-
-			// Capture panic to test error handling
-			defer func() {
-				if r := recover(); r != nil {
-					if !tt.shouldError {
-						t.Errorf("Unexpected error in test '%s': %v", tt.name, r)
-					}
-				} else if tt.shouldError {
-					t.Errorf("Expected an error in test '%s' but did not get one", tt.name)
-				}
-			}()
-
-			// Call the validate function
-			validate(tt.config)
-		})
-	}
-}
-
-func TestValidate_DirectoryPath(t *testing.T) {
-	dir := t.TempDir()
-	cfg := UploadConfig{
-		FilePath:      dir, // directory, not a file
-		ProjectID:     "p",
-		Token:         "tok",
-		LangISO:       "en",
-		GitHubRefName: "main",
-	}
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatalf("expected error for directory path, got none")
+		msg := fmt.Sprint(r)
+		if !strings.Contains(msg, "Exit called with code") {
+			t.Fatalf("expected exit panic, got: %v", r)
 		}
 	}()
-	validate(cfg)
-}
-
-func TestConstructArgs(t *testing.T) {
-	tests := []struct {
-		name     string
-		config   UploadConfig
-		expected []string
-	}{
-		{
-			name: "Basic configuration without additional params",
-			config: UploadConfig{
-				FilePath:      "testfile.json",
-				ProjectID:     "test_project",
-				Token:         "test_token",
-				LangISO:       "en",
-				GitHubRefName: "main",
-				PollTimeout:   120,
-				SkipTagging:   false,
-			},
-			expected: []string{
-				"--token=test_token",
-				"--project-id=test_project",
-				"file", "upload",
-				"--file=testfile.json",
-				"--lang-iso=en",
-				"--replace-modified",
-				"--include-path",
-				"--distinguish-by-file",
-				"--poll",
-				"--poll-timeout=120s",
-				"--tag-inserted-keys",
-				"--tag-skipped-keys",
-				"--tag-updated-keys",
-				"--tags", "main",
-			},
-		},
-		{
-			name: "Configuration with SkipTagging enabled",
-			config: UploadConfig{
-				FilePath:      "testfile.json",
-				ProjectID:     "test_project",
-				Token:         "test_token",
-				LangISO:       "en",
-				GitHubRefName: "main",
-				PollTimeout:   120,
-				SkipTagging:   true,
-			},
-			expected: []string{
-				"--token=test_token",
-				"--project-id=test_project",
-				"file", "upload",
-				"--file=testfile.json",
-				"--lang-iso=en",
-				"--replace-modified",
-				"--include-path",
-				"--distinguish-by-file",
-				"--poll",
-				"--poll-timeout=120s",
-			},
-		},
-		{
-			name: "Configuration with SkipPolling enabled",
-			config: UploadConfig{
-				FilePath:      "testfile.json",
-				ProjectID:     "test_project",
-				Token:         "test_token",
-				LangISO:       "en",
-				GitHubRefName: "main",
-				SkipPolling:   true,
-			},
-			expected: []string{
-				"--token=test_token",
-				"--project-id=test_project",
-				"file", "upload",
-				"--file=testfile.json",
-				"--lang-iso=en",
-				"--replace-modified",
-				"--include-path",
-				"--distinguish-by-file",
-				"--tag-inserted-keys",
-				"--tag-skipped-keys",
-				"--tag-updated-keys",
-				"--tags", "main",
-			},
-		},
-		{
-			name: "Configuration with SkipDefaultFlags enabled",
-			config: UploadConfig{
-				FilePath:         "testfile.json",
-				ProjectID:        "test_project",
-				Token:            "test_token",
-				LangISO:          "en",
-				GitHubRefName:    "main",
-				SkipDefaultFlags: true,
-				SkipTagging:      true,
-				PollTimeout:      120,
-			},
-			expected: []string{
-				"--token=test_token",
-				"--project-id=test_project",
-				"file", "upload",
-				"--file=testfile.json",
-				"--lang-iso=en",
-				"--poll",
-				"--poll-timeout=120s",
-			},
-		},
-		{
-			name: "Configuration with multiple additional params",
-			config: UploadConfig{
-				FilePath:      "testfile.json",
-				ProjectID:     "test_project",
-				Token:         "test_token",
-				LangISO:       "en",
-				GitHubRefName: "main",
-				AdditionalParams: `
---convert-placeholders
---custom-flag=true
---another-flag=false
---quoted="some value"
---json={"key": "value with space"}
-`,
-				PollTimeout: 120,
-				SkipTagging: false,
-			},
-			expected: []string{
-				"--token=test_token",
-				"--project-id=test_project",
-				"file", "upload",
-				"--file=testfile.json",
-				"--lang-iso=en",
-				"--replace-modified",
-				"--include-path",
-				"--distinguish-by-file",
-				"--poll",
-				"--poll-timeout=120s",
-				"--tag-inserted-keys",
-				"--tag-skipped-keys",
-				"--tag-updated-keys",
-				"--tags", "main",
-				"--convert-placeholders",
-				"--custom-flag=true",
-				"--another-flag=false",
-				`--quoted="some value"`,
-				`--json={"key": "value with space"}`,
-			},
-		},
-		{
-			name: "Configuration with extra spaces in additional params",
-			config: UploadConfig{
-				FilePath:      "testfile.json",
-				ProjectID:     "test_project",
-				Token:         "test_token",
-				LangISO:       "en",
-				GitHubRefName: "main",
-				AdditionalParams: `
---flag1=value1
---flag2=value2
---spaced="this  has   multiple spaces"
-`,
-				PollTimeout: 120,
-			},
-			expected: []string{
-				"--token=test_token",
-				"--project-id=test_project",
-				"file", "upload",
-				"--file=testfile.json",
-				"--lang-iso=en",
-				"--replace-modified",
-				"--include-path",
-				"--distinguish-by-file",
-				"--poll",
-				"--poll-timeout=120s",
-				"--tag-inserted-keys",
-				"--tag-skipped-keys",
-				"--tag-updated-keys",
-				"--tags", "main",
-				"--flag1=value1",
-				"--flag2=value2",
-				`--spaced="this  has   multiple spaces"`,
-			},
-		},
-		{
-			name: "Empty configuration",
-			config: UploadConfig{
-				FilePath:      "",
-				ProjectID:     "",
-				Token:         "",
-				LangISO:       "",
-				GitHubRefName: "",
-				PollTimeout:   0,
-				SkipTagging:   true,
-			},
-			expected: []string{
-				"--token=",
-				"--project-id=",
-				"file", "upload",
-				"--file=",
-				"--lang-iso=",
-				"--replace-modified",
-				"--include-path",
-				"--distinguish-by-file",
-				"--poll",
-				"--poll-timeout=0s",
-			},
-		},
-		{
-			name: "Configuration with multiple additional params (YAML style)",
-			config: UploadConfig{
-				FilePath:      "locales/en.json",
-				ProjectID:     "proj_abc123",
-				Token:         "super_secret",
-				LangISO:       "en",
-				GitHubRefName: "release",
-				PollTimeout:   180,
-				AdditionalParams: `
---directory-prefix=%LANG_ISO%
---indentation=4sp
---json-unescaped-slashes=true
---export-empty-as=skip
---export-sort=a_z
---replace-breaks=false
---language-mapping=[{"original_language_iso":"en_US","custom_language_iso":"en-US"},{"original_language_iso":"fr_CA","custom_language_iso":"fr-CA"}]
-`,
-			},
-			expected: []string{
-				"--token=super_secret",
-				"--project-id=proj_abc123",
-				"file", "upload",
-				"--file=locales/en.json",
-				"--lang-iso=en",
-				"--replace-modified",
-				"--include-path",
-				"--distinguish-by-file",
-				"--poll",
-				"--poll-timeout=180s",
-				"--tag-inserted-keys",
-				"--tag-skipped-keys",
-				"--tag-updated-keys",
-				"--tags", "release",
-				"--directory-prefix=%LANG_ISO%",
-				"--indentation=4sp",
-				"--json-unescaped-slashes=true",
-				"--export-empty-as=skip",
-				"--export-sort=a_z",
-				"--replace-breaks=false",
-				// Note that in reality the upload does not have language mappings
-				`--language-mapping=[{"original_language_iso":"en_US","custom_language_iso":"en-US"},{"original_language_iso":"fr_CA","custom_language_iso":"fr-CA"}]`,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt // Capture range variable
-
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			actual := constructArgs(tt.config)
-
-			// Normalize argument spacing for comparison
-			actualNormalized := normalizeArgs(actual)
-			expectedNormalized := normalizeArgs(tt.expected)
-
-			if !reflect.DeepEqual(actualNormalized, expectedNormalized) {
-				t.Errorf("Arguments do not match for test '%s'.\nExpected: %v\nActual:   %v",
-					tt.name, expectedNormalized, actualNormalized)
-			}
-		})
-	}
-}
-
-func TestUploadFile_ServerErrorFastFail(t *testing.T) {
-	cfg := UploadConfig{
-		FilePath:      "file.json",
-		ProjectID:     "p",
-		Token:         "t",
-		LangISO:       "en",
-		GitHubRefName: "main",
-		MaxRetries:    3,
-		SleepTime:     0,
-		UploadTimeout: 10,
-	}
-
-	// temp file so validateFile passes
-	f, err := os.Create(cfg.FilePath)
-	if err != nil {
-		t.Fatalf("create temp file: %v", err)
-	}
-	_ = f.Close()
-	defer os.Remove(cfg.FilePath)
-
-	// executor returns a 500-ish message; uploadFile should bail immediately
-	mockExec := func(cmdPath string, args []string, timeout int) error {
-		return errors.New("Error: API request error 500 Something went wrong")
-	}
-
-	stderr, pan := captureStderr(func() { uploadFile(cfg, mockExec) })
-
-	if pan == nil {
-		t.Fatalf("expected panic from returnWithError (exit), got none")
-	}
-	if !strings.Contains(stderr, "server responded with an error (500); exiting") {
-		t.Fatalf("stderr missing 500 fast-fail message:\n---\n%s\n---", stderr)
-	}
-}
-
-// normalizeArgs trims whitespace for consistent comparison of arguments.
-func normalizeArgs(args []string) []string {
-	normalized := make([]string, len(args))
-	for i, arg := range args {
-		normalized[i] = strings.TrimSpace(arg)
-	}
-	return normalized
-}
-
-// buildMockBinaryIfNeeded compiles the binary only if it doesn’t exist or is outdated.
-func buildMockBinaryIfNeeded(t *testing.T, sourcePath, outputPath string) {
-	// Check if the binary already exists and is up-to-date
-	sourceInfo, err := os.Stat(sourcePath)
-	if err != nil {
-		t.Fatalf("Failed to stat source file: %v", err)
-	}
-
-	binaryInfo, err := os.Stat(outputPath)
-	if err == nil && binaryInfo.ModTime().After(sourceInfo.ModTime()) {
-		// Binary exists and is newer than the source, no need to rebuild
-		return
-	}
-
-	// Build the binary
-	cmd := exec.Command("go", "build", "-o", outputPath, sourcePath)
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("Failed to build mock binary: %v", err)
-	}
-}
-
-func captureStderr(fn func()) (stderr string, pan any) {
-	old := os.Stderr
-	r, w, _ := os.Pipe()
-	os.Stderr = w
-
-	done := make(chan struct{})
-	go func() {
-		defer func() {
-			pan = recover()
-			close(done)
-		}()
-		fn()
-	}()
-
-	<-done
-	_ = w.Close()
-	os.Stderr = old
-	b, _ := io.ReadAll(r)
-	_ = r.Close()
-	return string(b), pan
+	fn()
 }

@@ -1,17 +1,16 @@
 package main
 
 import (
-	"bufio"
 	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/bodrovis/lokalise-actions-common/v2/parsers"
-	"github.com/bodrovis/lokalise-actions-common/v2/tailring"
+	"github.com/bodrovis/lokex/client"
 )
 
 // exitFunc is a function variable that defaults to os.Exit.
@@ -19,12 +18,13 @@ import (
 var exitFunc = os.Exit
 
 const (
-	defaultMaxRetries    = 3   // Default number of retries if the upload is rate-limited
-	defaultSleepTime     = 1   // Default initial sleep time in seconds between retries
-	maxSleepTime         = 60  // Maximum sleep time in seconds between retries
-	maxTotalTime         = 300 // Maximum total retry time in seconds
-	defaultPollTimeout   = 120 // Upload poll timeout
-	defaultUploadTimeout = 120 // Timeout for the upload itself
+	defaultMaxRetries       = 3   // Default number of retries if the upload is rate-limited
+	defaultInitialSleepTime = 1   // Default initial sleep time in seconds between retries
+	maxSleepTime            = 60  // Maximum sleep time in seconds between retries
+	defaultUploadTimeout    = 600 // Timeout for the upload itself
+	defaultHTTPTimeout      = 120
+	defaultPollInitialWait  = 1
+	defaultPollMaxWait      = 120
 )
 
 // UploadConfig holds all the necessary configuration for uploading a file
@@ -39,9 +39,38 @@ type UploadConfig struct {
 	SkipPolling      bool
 	SkipDefaultFlags bool
 	MaxRetries       int
-	SleepTime        int
-	PollTimeout      int
-	UploadTimeout    int
+	InitialSleepTime time.Duration
+	MaxSleepTime     time.Duration
+	UploadTimeout    time.Duration
+	HTTPTimeout      time.Duration
+	PollInitialWait  time.Duration
+	PollMaxWait      time.Duration
+}
+
+type Uploader interface {
+	Upload(ctx context.Context, params client.UploadParams, poll bool) (string, error)
+}
+
+type ClientFactory interface {
+	NewUploader(cfg UploadConfig) (Uploader, error)
+}
+
+type LokaliseFactory struct{}
+
+func (f *LokaliseFactory) NewUploader(cfg UploadConfig) (Uploader, error) {
+	lokaliseClient, err := client.NewClient(
+		cfg.Token,
+		cfg.ProjectID,
+		client.WithMaxRetries(cfg.MaxRetries),
+		client.WithHTTPTimeout(cfg.HTTPTimeout),
+		client.WithBackoff(cfg.InitialSleepTime, cfg.MaxSleepTime),
+		client.WithPollWait(cfg.PollInitialWait, cfg.PollMaxWait),
+		client.WithUserAgent("lokalise-push-action/lokex"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return client.NewUploader(lokaliseClient), nil
 }
 
 func main() {
@@ -72,19 +101,28 @@ func main() {
 		Token:            os.Args[3],
 		LangISO:          os.Getenv("BASE_LANG"),
 		GitHubRefName:    os.Getenv("GITHUB_REF_NAME"),
-		AdditionalParams: os.Getenv("CLI_ADD_PARAMS"),
+		AdditionalParams: os.Getenv("ADDITIONAL_PARAMS"),
 		SkipTagging:      skipTagging,
 		SkipPolling:      skipPolling,
 		SkipDefaultFlags: skipDefaultFlags,
 		MaxRetries:       parsers.ParseUintEnv("MAX_RETRIES", defaultMaxRetries),
-		SleepTime:        parsers.ParseUintEnv("SLEEP_TIME", defaultSleepTime),
-		PollTimeout:      parsers.ParseUintEnv("UPLOAD_POLL_TIMEOUT", defaultPollTimeout),
-		UploadTimeout:    parsers.ParseUintEnv("UPLOAD_TIMEOUT", defaultUploadTimeout),
+		InitialSleepTime: time.Duration(parsers.ParseUintEnv("SLEEP_TIME", defaultInitialSleepTime)) * time.Second,
+		MaxSleepTime:     time.Duration(maxSleepTime) * time.Second,
+		UploadTimeout:    time.Duration(parsers.ParseUintEnv("UPLOAD_TIMEOUT", defaultUploadTimeout)) * time.Second,
+		HTTPTimeout:      time.Duration(parsers.ParseUintEnv("HTTP_TIMEOUT", defaultHTTPTimeout)) * time.Second,
+		PollInitialWait:  time.Duration(parsers.ParseUintEnv("POLL_INITIAL_WAIT", defaultPollInitialWait)) * time.Second,
+		PollMaxWait:      time.Duration(parsers.ParseUintEnv("POLL_MAX_WAIT", defaultPollMaxWait)) * time.Second,
 	}
 
 	validate(config)
 
-	uploadFile(config, executeUpload)
+	ctx, cancel := context.WithTimeout(context.Background(), config.UploadTimeout)
+	defer cancel()
+
+	err = uploadFile(ctx, config, &LokaliseFactory{})
+	if err != nil {
+		returnWithError(err.Error())
+	}
 }
 
 // validate checks if the configuration is valid and contains all necessary fields.
@@ -123,209 +161,60 @@ func validateFile(filePath string) {
 	}
 }
 
-// executeUpload runs the command with a timeout, streams output to CI logs,
-// and returns an error that includes the last chunk of stderr (pref) or stdout (fallback), capped.
-func executeUpload(cmdPath string, args []string, uploadTimeout int) error {
-	timeout := time.Duration(uploadTimeout) * time.Second
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, cmdPath, args...)
-
-	// Separate tails so usage spam on one stream doesn't evict the real error on the other.
-	rbErr := tailring.NewKB(64) // stderr usually carries the actionable error
-	rbOut := tailring.NewKB(16) // stdout tail for context
-
-	cmd.Stdout = tailring.Tee(os.Stdout, rbOut)
-	cmd.Stderr = tailring.Tee(os.Stderr, rbErr)
-
-	err := cmd.Run()
-
-	// Build tails (stderr first)
-	stderrTail := strings.TrimSpace(rbErr.String())
-	stdoutTail := strings.TrimSpace(rbOut.String())
-	pickTail := func() string {
-		if stderrTail != "" {
-			return stderrTail
-		}
-		return stdoutTail
-	}
-
-	// Timeout
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		if t := pickTail(); t != "" {
-			return fmt.Errorf("command timed out after %ds: %s", uploadTimeout, t)
-		}
-		return fmt.Errorf("command timed out after %ds", uploadTimeout)
-	}
-
-	// Non-zero exit
+func uploadFile(ctx context.Context, cfg UploadConfig, factory ClientFactory) error {
+	uploader, err := factory.NewUploader(cfg)
 	if err != nil {
-		var ee *exec.ExitError
-		exit := ""
-		if errors.As(err, &ee) {
-			exit = fmt.Sprintf(" (exit %d)", ee.ExitCode())
-		}
-		if t := pickTail(); t != "" {
-			return fmt.Errorf("command failed%s: %s: %w", exit, t, err)
-		}
-		return fmt.Errorf("command failed%s: %w", exit, err)
+		return fmt.Errorf("cannot create Lokalise API client: %w", err)
+	}
+
+	params := buildUploadParams(cfg)
+
+	fmt.Printf("Starting to upload file %s\n", cfg.FilePath)
+
+	if _, err := uploader.Upload(ctx, params, !cfg.SkipPolling); err != nil {
+		return fmt.Errorf("failed to upload file %s: %w", cfg.FilePath, err)
 	}
 
 	return nil
 }
 
-// uploadFile uploads a file to Lokalise using the lokalise2 CLI tool.
-// It handles rate limiting by retrying the upload with exponential backoff.
-func uploadFile(config UploadConfig, uploadExecutor func(cmdPath string, args []string, uploadTimeout int) error) {
-	fmt.Printf("Starting to upload file %s\n", config.FilePath)
-
-	args := constructArgs(config)
-	startTime := time.Now()
-	sleepTime := config.SleepTime
-
-	for attempt := 1; attempt <= config.MaxRetries; attempt++ {
-		fmt.Printf("Attempt %d of %d\n", attempt, config.MaxRetries)
-
-		err := uploadExecutor("./bin/lokalise2", args, config.UploadTimeout)
-		if err == nil {
-			fmt.Printf("Successfully uploaded file %s\n", config.FilePath)
-			return
-		}
-
-		// Fast-fail on server error (500 etc.)
-		if isServerError(err.Error()) {
-			returnWithError("Lokalise server responded with an error (500); exiting")
-		}
-
-		if isLangIsoError(err.Error()) {
-			returnWithError("invalid lang_iso (error 400) - make sure your project has a proper base_lang; exiting")
-		}
-
-		// Retryable? (timeouts, rate limit, polling limit, etc.)
-		if isRetryableError(err) {
-			if attempt == config.MaxRetries {
-				returnWithError(fmt.Sprintf(
-					"Failed to upload file %s after %d attempts. Last error: %v",
-					config.FilePath, config.MaxRetries, err,
-				))
-			}
-
-			elapsed := time.Since(startTime)
-			if elapsed+time.Duration(sleepTime)*time.Second >= time.Duration(maxTotalTime)*time.Second {
-				returnWithError(fmt.Sprintf(
-					"Max retry time exceeded (%d seconds) for %s. Exiting.",
-					maxTotalTime, config.FilePath,
-				))
-			}
-
-			fmt.Printf("Retryable error detected (%v), sleeping %ds before retry...\n", err, sleepTime)
-			time.Sleep(time.Duration(sleepTime) * time.Second)
-			sleepTime = min(sleepTime*2, maxSleepTime)
-			continue
-		}
-
-		// Non-retryable: fail fast.
-		returnWithError(fmt.Sprintf("Permanent error during upload for %s: %v", config.FilePath, err))
-	}
-
-	returnWithError(fmt.Sprintf("Failed to upload file %s after %d attempts.", config.FilePath, config.MaxRetries))
-}
-
-// constructArgs prepares the arguments for the lokalise2 CLI.
-func constructArgs(config UploadConfig) []string {
-	args := []string{
-		fmt.Sprintf("--token=%s", config.Token),
-		fmt.Sprintf("--project-id=%s", config.ProjectID),
-		"file", "upload",
-		fmt.Sprintf("--file=%s", config.FilePath),
-		fmt.Sprintf("--lang-iso=%s", config.LangISO),
+func buildUploadParams(config UploadConfig) client.UploadParams {
+	params := client.UploadParams{
+		"filename": config.FilePath,
+		"lang_iso": config.LangISO,
 	}
 
 	if !config.SkipDefaultFlags {
-		args = append(args, "--replace-modified", "--include-path", "--distinguish-by-file")
-	}
-
-	if !config.SkipPolling {
-		args = append(args, "--poll", fmt.Sprintf("--poll-timeout=%ds", config.PollTimeout))
+		params["replace_modified"] = true
+		params["include_path"] = true
+		params["distinguish_by_file"] = true
 	}
 
 	if !config.SkipTagging {
-		args = append(args, "--tag-inserted-keys", "--tag-skipped-keys", "--tag-updated-keys", "--tags", config.GitHubRefName)
+		params["tag_inserted_keys"] = true
+		params["tag_skipped_keys"] = true
+		params["tag_updated_keys"] = true
+		params["tags"] = []string{config.GitHubRefName}
 	}
 
-	if config.AdditionalParams != "" {
-		scanner := bufio.NewScanner(strings.NewReader(config.AdditionalParams))
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line != "" {
-				args = append(args, line)
-			}
+	ap := strings.TrimSpace(config.AdditionalParams)
+	if ap != "" {
+		add, err := parseJSONMap(ap)
+		if err != nil {
+			returnWithError("Invalid additional_params (must be JSON object): " + err.Error())
 		}
-		if err := scanner.Err(); err != nil {
-			returnWithError(fmt.Sprintf("Failed to parse additional parameters: %v", err))
-		}
+		maps.Copy(params, add)
 	}
 
-	return args
+	return params
 }
 
-func isServerError(s string) bool {
-	x := strings.ToLower(s)
-	return strings.Contains(x, "api request error 500") ||
-		strings.Contains(x, "status code 500") ||
-		strings.Contains(x, "http 500")
-}
-
-func isLangIsoError(s string) bool {
-	x := strings.ToLower(s)
-	return strings.Contains(x, "400 invalid `lang_iso`") ||
-		strings.Contains(x, "400 invalid 'lang_iso'") ||
-		strings.Contains(x, "400 invalid lang_iso") ||
-		strings.Contains(x, "invalid lang_iso parameter")
-}
-
-func isRetryableError(err error) bool {
-	if err == nil {
-		return false
+func parseJSONMap(s string) (map[string]any, error) {
+	var m map[string]any
+	if err := json.Unmarshal([]byte(s), &m); err != nil {
+		return nil, err
 	}
-
-	if isRateLimitError(err) {
-		return true
-	}
-
-	// Lowercase the message for case-insensitive matching
-	msg := strings.ToLower(err.Error())
-
-	// Timeouts or transient network failures
-	if strings.Contains(msg, "command timed out") ||
-		strings.Contains(msg, "timed out") ||
-		strings.Contains(msg, "context deadline exceeded") ||
-		strings.Contains(msg, "time exceeded") ||
-		strings.Contains(msg, "polling time exceeded limit") {
-		return true
-	}
-
-	return false
-}
-
-// isRateLimitError checks if the error is due to rate limiting (HTTP status code 429).
-func isRateLimitError(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := strings.ToLower(err.Error())
-	return strings.Contains(s, "api request error 429") ||
-		strings.Contains(s, "request error 429") ||
-		strings.Contains(s, "rate limit")
-}
-
-// min returns the smaller of two integers.
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
+	return m, nil
 }
 
 // returnWithError prints an error message to stderr and exits the program with a non-zero status code.
