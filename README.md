@@ -9,6 +9,8 @@ GitHub action to upload changed translation files in the base language from your
 
 To download translation files from Lokalise to GitHub, use the [lokalise-pull-action](https://github.com/lokalise/lokalise-pull-action).
 
+*To find documentation for the **stable version 3**, [browse the v3 tag](https://github.com/lokalise/lokalise-pull-action/tree/v3).*
+
 ## Usage
 
 Use this action in the following way:
