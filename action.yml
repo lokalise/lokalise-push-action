@@ -202,7 +202,7 @@ runs:
       if: inputs.rambo_mode != 'true' && (inputs.use_tag_tracking != 'true' || steps.check-sha.outputs.identical != 'true')
       id: changed-files
       # tj-actions/changed-files@v46.0.5
-      uses: tj-actions/changed-files@db731a131ccd81ed52a3d463b6d2a4b2856c7ec9
+      uses: tj-actions/changed-files@2371aa7cd265d2e8a0213dc9e2a70dfcfb8fa114
       with:
         files_from_source_file: lok_action_paths_temp.txt
         separator: ','
