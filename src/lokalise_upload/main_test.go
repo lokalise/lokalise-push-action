@@ -51,14 +51,12 @@ func TestBuildUploadParams_MergesAndDefaults(t *testing.T) {
 		"distinguish_by_file":  true,
 		"convert_placeholders": true,
 		"custom_bool":          false,
-		// tags merged from AdditionalParams; your code prefers whatever user passed there.
-		"tags":              []any{"custom-tag-1", "custom-tag-2"},
-		"tag_inserted_keys": true,
-		"tag_skipped_keys":  true,
-		"tag_updated_keys":  true,
+		"tags":                 []any{"custom-tag-1", "custom-tag-2"},
+		"tag_inserted_keys":    true,
+		"tag_skipped_keys":     true,
+		"tag_updated_keys":     true,
 	}
 
-	// we tolerate []string vs []any for slices
 	normalize := func(v any) any {
 		switch s := v.(type) {
 		case []string:
@@ -102,11 +100,11 @@ func TestBuildUploadParams_EmptyAdditional_UsesDefaults(t *testing.T) {
 	if p["lang_iso"] != "en" {
 		t.Fatalf("lang_iso wrong: %v", p["lang_iso"])
 	}
-	// default flags present
+
 	if p["replace_modified"] != true || p["include_path"] != true || p["distinguish_by_file"] != true {
 		t.Fatalf("default flags not set correctly: %#v", p)
 	}
-	// tagging present & includes GitHub ref
+
 	switch tags := p["tags"].(type) {
 	case []string:
 		if len(tags) != 1 || tags[0] != "release-1" {
@@ -166,7 +164,7 @@ func TestUploadFile_Success_PollingEnabled(t *testing.T) {
 		GitHubRefName:    "v1.0.0",
 		SkipTagging:      false,
 		SkipDefaultFlags: false,
-		SkipPolling:      false, // -> poll=true
+		SkipPolling:      false,
 		MaxRetries:       7,
 		InitialSleepTime: 2 * time.Second,
 		MaxSleepTime:     30 * time.Second,
@@ -185,7 +183,6 @@ func TestUploadFile_Success_PollingEnabled(t *testing.T) {
 		t.Fatalf("unexpected: %v", err)
 	}
 
-	// factory knobs captured
 	if ff.gotToken != "tok_abc" || ff.gotProjectID != "proj_123" {
 		t.Fatalf("factory creds wrong: tok=%s proj=%s", ff.gotToken, ff.gotProjectID)
 	}
@@ -199,7 +196,6 @@ func TestUploadFile_Success_PollingEnabled(t *testing.T) {
 		t.Fatalf("poll waits wrong: %v / %v", ff.gotPollInit, ff.gotPollMax)
 	}
 
-	// uploader call captured
 	if !fu.called {
 		t.Fatalf("expected Upload to be called")
 	}
@@ -209,7 +205,7 @@ func TestUploadFile_Success_PollingEnabled(t *testing.T) {
 	if fu.gotParams["filename"] != "tmp/en.json" || fu.gotParams["lang_iso"] != "en" {
 		t.Fatalf("params wrong: %#v", fu.gotParams)
 	}
-	// basic default flags present
+
 	if fu.gotParams["replace_modified"] != true || fu.gotParams["include_path"] != true {
 		t.Fatalf("default flags missing: %#v", fu.gotParams)
 	}
@@ -222,7 +218,7 @@ func TestUploadFile_Success_PollingDisabled(t *testing.T) {
 		Token:            "tok_abc",
 		LangISO:          "en",
 		GitHubRefName:    "v1.0.0",
-		SkipPolling:      true, // -> poll=false
+		SkipPolling:      true,
 		MaxRetries:       3,
 		InitialSleepTime: 1 * time.Second,
 		MaxSleepTime:     10 * time.Second,

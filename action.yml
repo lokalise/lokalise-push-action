@@ -292,18 +292,18 @@ runs:
       id: push-translation-files
       shell: bash
       env:
-        BASE_LANG: ${{ inputs.base_lang }}
-        ADDITIONAL_PARAMS: ${{ inputs.additional_params }}
-        MAX_RETRIES: ${{ inputs.max_retries }}
-        SLEEP_TIME: ${{ inputs.sleep_on_retry }}
-        UPLOAD_TIMEOUT: ${{ inputs.upload_timeout }}
-        HTTP_TIMEOUT: ${{ inputs.http_timeout }}
-        SKIP_TAGGING: ${{ inputs.skip_tagging }}
-        SKIP_POLLING: ${{ inputs.skip_polling }}
-        POLL_INITIAL_WAIT: ${{ inputs.poll_initial_wait }}
-        POLL_MAX_WAIT: ${{ inputs.poll_max_wait }}
-        SKIP_DEFAULT_FLAGS: ${{ inputs.skip_default_flags }}
-        PLATFORM: ${{ inputs.os_platform }}
+        BASE_LANG: "${{ inputs.base_lang }}"
+        ADDITIONAL_PARAMS: "${{ inputs.additional_params }}"
+        MAX_RETRIES: "${{ inputs.max_retries }}"
+        SLEEP_TIME: "${{ inputs.sleep_on_retry }}"
+        UPLOAD_TIMEOUT: "${{ inputs.upload_timeout }}"
+        HTTP_TIMEOUT: "${{ inputs.http_timeout }}"
+        SKIP_TAGGING: "${{ inputs.skip_tagging }}"
+        SKIP_POLLING: "${{ inputs.skip_polling }}"
+        POLL_INITIAL_WAIT: "${{ inputs.poll_initial_wait }}"
+        POLL_MAX_WAIT: "${{ inputs.poll_max_wait }}"
+        SKIP_DEFAULT_FLAGS: "${{ inputs.skip_default_flags }}"
+        PLATFORM: "${{ inputs.os_platform }}"
       run: |
         set -euo pipefail
 
@@ -346,10 +346,10 @@ runs:
       if: steps.push-translation-files.outputs.files_uploaded == 'true' && (steps.check-first-run.outputs.first_run == 'true' || inputs.use_tag_tracking == 'true')
       shell: bash
       env:
-        USE_TAG_TRACKING: ${{ inputs.use_tag_tracking }}
-        FIRST_RUN: ${{ steps.check-first-run.outputs.first_run }}
-        GIT_USER_NAME: ${{ inputs.git_user_name }}
-        GIT_USER_EMAIL: ${{ inputs.git_user_email }}
+        USE_TAG_TRACKING: "${{ inputs.use_tag_tracking }}"
+        FIRST_RUN: "${{ steps.check-first-run.outputs.first_run }}"
+        GIT_USER_NAME: "${{ inputs.git_user_name }}"
+        GIT_USER_EMAIL: "${{ inputs.git_user_email }}"
       run: |
         set -euo pipefail
 
