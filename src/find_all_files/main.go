@@ -89,7 +89,7 @@ func findAllTranslationFiles(paths []string, flatNaming bool, baseLang, fileExt 
 
 	for _, path := range paths {
 		if path == "" {
-			continue // Skip empty paths
+			continue
 		}
 
 		if namePattern != "" {

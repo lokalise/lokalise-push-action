@@ -69,7 +69,7 @@ func validateEnvironment() ([]string, string, string, string) {
 func storeTranslationPaths(paths []string, flatNaming bool, baseLang, fileExt, namePattern string, writer io.Writer) error {
 	for _, path := range paths {
 		if path == "" {
-			continue // Skip empty paths.
+			continue
 		}
 
 		var formattedPath string

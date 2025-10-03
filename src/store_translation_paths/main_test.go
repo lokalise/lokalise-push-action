@@ -26,11 +26,10 @@ func TestMain(m *testing.M) {
 
 func TestValidateEnvironment(t *testing.T) {
 	t.Run("Valid environment variables", func(t *testing.T) {
-		os.Setenv("TRANSLATIONS_PATH", "\npath1\n\npath2\n")
-		os.Setenv("BASE_LANG", "en")
-		os.Setenv("FILE_FORMAT", "json")
-		os.Setenv("NAME_PATTERN", "custom_name.json")
-		defer os.Clearenv()
+		t.Setenv("TRANSLATIONS_PATH", "\npath1\n\npath2\n")
+		t.Setenv("BASE_LANG", "en")
+		t.Setenv("FILE_FORMAT", "json")
+		t.Setenv("NAME_PATTERN", "custom_name.json")
 
 		paths, baseLang, fileExt, namePattern := validateEnvironment()
 
@@ -49,12 +48,11 @@ func TestValidateEnvironment(t *testing.T) {
 	})
 
 	t.Run("FILE_EXT has precedence over FILE_FORMAT", func(t *testing.T) {
-		os.Setenv("TRANSLATIONS_PATH", "\npath1\n\npath2\n")
-		os.Setenv("BASE_LANG", "en")
-		os.Setenv("FILE_FORMAT", "json_structured")
-		os.Setenv("FILE_EXT", "json")
-		os.Setenv("NAME_PATTERN", "custom_name.json")
-		defer os.Clearenv()
+		t.Setenv("TRANSLATIONS_PATH", "\npath1\n\npath2\n")
+		t.Setenv("BASE_LANG", "en")
+		t.Setenv("FILE_FORMAT", "json_structured")
+		t.Setenv("FILE_EXT", "json")
+		t.Setenv("NAME_PATTERN", "custom_name.json")
 
 		_, _, fileExt, _ := validateEnvironment()
 
@@ -64,13 +62,18 @@ func TestValidateEnvironment(t *testing.T) {
 	})
 
 	t.Run("Missing environment variables", func(t *testing.T) {
+		t.Setenv("TRANSLATIONS_PATH", "")
+		t.Setenv("BASE_LANG", "")
+		t.Setenv("FILE_FORMAT", "")
+		t.Setenv("FILE_EXT", "")
+		t.Setenv("NAME_PATTERN", "")
+
 		defer func() {
 			if r := recover(); r == nil {
 				t.Errorf("Expected panic for missing environment variables")
 			}
 		}()
 
-		os.Clearenv()
 		validateEnvironment()
 	})
 }
@@ -167,13 +170,11 @@ func TestStoreTranslationPaths(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt // capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			// Use a buffer instead of mocking os.Create
 			var buf bytes.Buffer
 
-			// Call the function with the buffer as writer
 			err := storeTranslationPaths(tt.paths, tt.flatNaming, tt.baseLang, tt.fileExt, tt.namePattern, &buf)
 
 			if tt.shouldError {
