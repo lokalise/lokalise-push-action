@@ -153,10 +153,6 @@ func prepareConfig(filePath string) UploadConfig {
 
 // validateFile checks if the file exists
 func validateFile(filePath string) {
-	if filePath == "" {
-		returnWithError("File path is required and cannot be empty.")
-	}
-
 	fi, err := os.Stat(filePath)
 	if os.IsNotExist(err) {
 		returnWithError(fmt.Sprintf("File %s does not exist.", filePath))
