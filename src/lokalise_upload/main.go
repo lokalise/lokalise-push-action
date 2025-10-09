@@ -75,51 +75,18 @@ func (f *LokaliseFactory) NewUploader(cfg UploadConfig) (Uploader, error) {
 
 func main() {
 	// Ensure the required command-line arguments are provided
-	if len(os.Args) < 4 {
-		returnWithError("Usage: lokalise_upload <file> <project_id> <token>")
+	if len(os.Args) < 2 {
+		returnWithError("Usage: lokalise_upload <file>")
 	}
 
-	skipTagging, err := parsers.ParseBoolEnv("SKIP_TAGGING")
-	if err != nil {
-		returnWithError("Invalid value for the skip_tagging parameter.")
-	}
-
-	skipPolling, err := parsers.ParseBoolEnv("SKIP_POLLING")
-	if err != nil {
-		returnWithError("Invalid value for the skip_polling parameter.")
-	}
-
-	skipDefaultFlags, err := parsers.ParseBoolEnv("SKIP_DEFAULT_FLAGS")
-	if err != nil {
-		returnWithError("Invalid value for the skip_default_flags parameter.")
-	}
-
-	// Create the configuration struct
-	config := UploadConfig{
-		FilePath:         os.Args[1],
-		ProjectID:        os.Args[2],
-		Token:            os.Args[3],
-		LangISO:          os.Getenv("BASE_LANG"),
-		GitHubRefName:    os.Getenv("GITHUB_REF_NAME"),
-		AdditionalParams: os.Getenv("ADDITIONAL_PARAMS"),
-		SkipTagging:      skipTagging,
-		SkipPolling:      skipPolling,
-		SkipDefaultFlags: skipDefaultFlags,
-		MaxRetries:       parsers.ParseUintEnv("MAX_RETRIES", defaultMaxRetries),
-		InitialSleepTime: time.Duration(parsers.ParseUintEnv("SLEEP_TIME", defaultInitialSleepTime)) * time.Second,
-		MaxSleepTime:     time.Duration(maxSleepTime) * time.Second,
-		UploadTimeout:    time.Duration(parsers.ParseUintEnv("UPLOAD_TIMEOUT", defaultUploadTimeout)) * time.Second,
-		HTTPTimeout:      time.Duration(parsers.ParseUintEnv("HTTP_TIMEOUT", defaultHTTPTimeout)) * time.Second,
-		PollInitialWait:  time.Duration(parsers.ParseUintEnv("POLL_INITIAL_WAIT", defaultPollInitialWait)) * time.Second,
-		PollMaxWait:      time.Duration(parsers.ParseUintEnv("POLL_MAX_WAIT", defaultPollMaxWait)) * time.Second,
-	}
+	config := prepareConfig(os.Args[1])
 
 	validate(config)
 
 	ctx, cancel := context.WithTimeout(context.Background(), config.UploadTimeout)
 	defer cancel()
 
-	err = uploadFile(ctx, config, &LokaliseFactory{})
+	err := uploadFile(ctx, config, &LokaliseFactory{})
 	if err != nil {
 		returnWithError(err.Error())
 	}
@@ -140,6 +107,47 @@ func validate(config UploadConfig) {
 	}
 	if config.GitHubRefName == "" {
 		returnWithError("GitHub reference name (GITHUB_REF_NAME) is required and cannot be empty.")
+	}
+}
+
+func prepareConfig(filePath string) UploadConfig {
+	skipTagging, err := parsers.ParseBoolEnv("SKIP_TAGGING")
+	if err != nil {
+		returnWithError("Invalid value for the skip_tagging parameter.")
+	}
+
+	skipPolling, err := parsers.ParseBoolEnv("SKIP_POLLING")
+	if err != nil {
+		returnWithError("Invalid value for the skip_polling parameter.")
+	}
+
+	skipDefaultFlags, err := parsers.ParseBoolEnv("SKIP_DEFAULT_FLAGS")
+	if err != nil {
+		returnWithError("Invalid value for the skip_default_flags parameter.")
+	}
+
+	filePath = strings.TrimSpace(filePath)
+	if len(filePath) == 0 {
+		returnWithError("File path is empty.")
+	}
+
+	return UploadConfig{
+		FilePath:         filePath,
+		ProjectID:        strings.TrimSpace(os.Getenv("LOKALISE_PROJECT_ID")),
+		Token:            strings.TrimSpace(os.Getenv("LOKALISE_API_TOKEN")),
+		LangISO:          strings.TrimSpace(os.Getenv("BASE_LANG")),
+		GitHubRefName:    strings.TrimSpace(os.Getenv("GITHUB_REF_NAME")),
+		AdditionalParams: strings.TrimSpace(os.Getenv("ADDITIONAL_PARAMS")),
+		SkipTagging:      skipTagging,
+		SkipPolling:      skipPolling,
+		SkipDefaultFlags: skipDefaultFlags,
+		MaxRetries:       parsers.ParseUintEnv("MAX_RETRIES", defaultMaxRetries),
+		InitialSleepTime: time.Duration(parsers.ParseUintEnv("SLEEP_TIME", defaultInitialSleepTime)) * time.Second,
+		MaxSleepTime:     time.Duration(maxSleepTime) * time.Second,
+		UploadTimeout:    time.Duration(parsers.ParseUintEnv("UPLOAD_TIMEOUT", defaultUploadTimeout)) * time.Second,
+		HTTPTimeout:      time.Duration(parsers.ParseUintEnv("HTTP_TIMEOUT", defaultHTTPTimeout)) * time.Second,
+		PollInitialWait:  time.Duration(parsers.ParseUintEnv("POLL_INITIAL_WAIT", defaultPollInitialWait)) * time.Second,
+		PollMaxWait:      time.Duration(parsers.ParseUintEnv("POLL_MAX_WAIT", defaultPollMaxWait)) * time.Second,
 	}
 }
 

@@ -24,6 +24,73 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+// ---------- prepareConfig tests --------------
+func TestPrepareConfig_Defaults(t *testing.T) {
+	t.Setenv("LOKALISE_PROJECT_ID", "")
+	t.Setenv("LOKALISE_API_TOKEN", "")
+	t.Setenv("BASE_LANG", "")
+	t.Setenv("GITHUB_REF_NAME", "")
+
+	cfg := prepareConfig("test.json")
+
+	if cfg.FilePath != "test.json" {
+		t.Errorf("expected FilePath=test.json, got %s", cfg.FilePath)
+	}
+	if cfg.MaxRetries != defaultMaxRetries {
+		t.Errorf("expected MaxRetries=%d, got %d", defaultMaxRetries, cfg.MaxRetries)
+	}
+	if cfg.InitialSleepTime != time.Duration(defaultInitialSleepTime)*time.Second {
+		t.Errorf("expected InitialSleepTime=%v, got %v", time.Duration(defaultInitialSleepTime)*time.Second, cfg.InitialSleepTime)
+	}
+	if cfg.UploadTimeout != time.Duration(defaultUploadTimeout)*time.Second {
+		t.Errorf("expected UploadTimeout=%v, got %v", time.Duration(defaultUploadTimeout)*time.Second, cfg.UploadTimeout)
+	}
+}
+
+func TestPrepareConfig_WithEnvOverrides(t *testing.T) {
+	t.Setenv("LOKALISE_PROJECT_ID", "proj123")
+	t.Setenv("LOKALISE_API_TOKEN", "token123")
+	t.Setenv("BASE_LANG", "en")
+	t.Setenv("GITHUB_REF_NAME", "refs/heads/main")
+	t.Setenv("MAX_RETRIES", "10")
+	t.Setenv("SLEEP_TIME", "5")
+	t.Setenv("UPLOAD_TIMEOUT", "42")
+
+	cfg := prepareConfig("file.json")
+
+	if cfg.ProjectID != "proj123" {
+		t.Errorf("expected ProjectID=proj123, got %s", cfg.ProjectID)
+	}
+	if cfg.Token != "token123" {
+		t.Errorf("expected Token=token123, got %s", cfg.Token)
+	}
+	if cfg.LangISO != "en" {
+		t.Errorf("expected LangISO=en, got %s", cfg.LangISO)
+	}
+	if cfg.GitHubRefName != "refs/heads/main" {
+		t.Errorf("expected GitHubRefName=refs/heads/main, got %s", cfg.GitHubRefName)
+	}
+	if cfg.MaxRetries != 10 {
+		t.Errorf("expected MaxRetries=10, got %d", cfg.MaxRetries)
+	}
+	if cfg.InitialSleepTime != 5*time.Second {
+		t.Errorf("expected InitialSleepTime=5s, got %v", cfg.InitialSleepTime)
+	}
+	if cfg.UploadTimeout != 42*time.Second {
+		t.Errorf("expected UploadTimeout=42s, got %v", cfg.UploadTimeout)
+	}
+}
+
+func TestPrepareConfig_ParseInvalidBoolEnv(t *testing.T) {
+	t.Setenv("SKIP_TAGGING", "not-a-bool")
+
+	requirePanicExit(t, func() { _ = prepareConfig("file.json") })
+}
+
+func TestPrepareConfig_EmptyFilePath(t *testing.T) {
+	requirePanicExit(t, func() { _ = prepareConfig("  ") })
+}
+
 // ---------- buildUploadParams tests ----------
 
 func TestBuildUploadParams_MergesAndDefaults(t *testing.T) {
