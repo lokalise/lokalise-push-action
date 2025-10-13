@@ -329,7 +329,7 @@ runs:
         chmod +x "$CMD_PATH" || true
 
         set +e
-        echo "$FILES" | tr ',' '\n' | xargs -P 6 -I {} "$CMD_PATH" "{}"
+        printf '%s' "$FILES" | tr ',' '\n' | sed '/^$/d' | xargs -d '\n' -P 6 -I {} -- "$CMD_PATH" "{}"
         xargs_exit_code=$?
         set -euo pipefail
 
