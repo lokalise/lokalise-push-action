@@ -5,7 +5,6 @@ inputs:
   api_token:
     description: 'API token for Lokalise with read/write permissions'
     required: true
-    secret: true
   project_id:
     description: 'Project ID for Lokalise'
     required: true
@@ -35,7 +34,7 @@ inputs:
     required: false
     default: 'false'
   name_pattern:
-    description: 'Custom pattern for naming translation files. Overrides default language-based naming. Must include both filename and extension if applicable (e.g., "custom_name.json" or "**.yaml"). Default behavior is used if not set.'
+    description: 'Custom pattern for naming translation files. Overrides default language-based naming. Must include both filename and extension if applicable (e.g., "custom_name.json" or "**/*.yaml"). Default behavior is used if not set.'
     required: false
     default: ''
   skip_tagging:
@@ -57,27 +56,27 @@ inputs:
   max_retries:
     description: 'Maximum number of retries on rate limit errors'
     required: false
-    default: 3
+    default: '3'
   sleep_on_retry:
     description: 'Number of seconds to sleep before retrying'
     required: false
-    default: 1
+    default: '1'
   http_timeout:
     description: 'Timeout for HTTP calls (in seconds)'
     required: false
-    default: 120
+    default: '120'
   upload_timeout:
     description: 'Timeout for the whole upload operation (in seconds)'
     required: false
-    default: 600
+    default: '600'
   poll_initial_wait:
     description: 'Number of seconds to wait before polling the upload process for the first time'
     required: false
-    default: 1
+    default: '1'
   poll_max_wait:
     description: 'Timeout for polling the upload process'
     required: false
-    default: 120
+    default: '120'
   os_platform:
     description: 'Target platform for the binary (linux_amd64, linux_arm64, mac_amd64, mac_arm64)'
     required: false
@@ -94,8 +93,7 @@ inputs:
     description: 'Use git tags to track last synced commit per branch'
     required: false
     default: 'false'
-permissions:
-  contents: write
+
 branding:
   icon: 'upload-cloud'
   color: 'green'
@@ -292,6 +290,8 @@ runs:
       id: push-translation-files
       shell: bash
       env:
+        LOKALISE_PROJECT_ID: "${{ inputs.project_id }}"
+        LOKALISE_API_TOKEN: "${{ inputs.api_token }}"
         BASE_LANG: "${{ inputs.base_lang }}"
         ADDITIONAL_PARAMS: "${{ inputs.additional_params }}"
         MAX_RETRIES: "${{ inputs.max_retries }}"
@@ -329,7 +329,7 @@ runs:
         chmod +x "$CMD_PATH" || true
 
         set +e
-        echo "$FILES" | tr ',' '\n' | xargs -P 6 -I {} "$CMD_PATH" "{}" "${{ inputs.project_id }}" "${{ inputs.api_token }}"
+        printf '%s' "$FILES" | tr ',' '\n' | sed '/^$/d' | xargs -d '\n' -P 6 -I {} -- "$CMD_PATH" "{}"
         xargs_exit_code=$?
         set -euo pipefail
 

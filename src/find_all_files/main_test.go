@@ -114,7 +114,7 @@ func TestFindAllTranslationFiles(t *testing.T) {
 		},
 		{
 			name:        "Custom name pattern with wildcard",
-			paths:       []string{filepath.Join(baseTestDir, "flat/translations")},
+			paths:       []string{filepath.Join(baseTestDir, "flat/translations"), filepath.Join(baseTestDir, "flat/translations")},
 			flatNaming:  false,
 			baseLang:    "",
 			fileExt:     "",
