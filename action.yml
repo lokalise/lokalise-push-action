@@ -34,7 +34,7 @@ inputs:
     required: false
     default: 'false'
   name_pattern:
-    description: 'Custom pattern for naming translation files. Overrides default language-based naming. Must include both filename and extension if applicable (e.g., "custom_name.json" or "**.yaml"). Default behavior is used if not set.'
+    description: 'Custom pattern for naming translation files. Overrides default language-based naming. Must include both filename and extension if applicable (e.g., "custom_name.json" or "**/*.yaml"). Default behavior is used if not set.'
     required: false
     default: ''
   skip_tagging:

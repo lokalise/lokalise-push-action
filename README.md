@@ -63,7 +63,7 @@ You'll need to provide some parameters for the action. These can be set as envir
 ### File and API options
 
 - `flat_naming` — Use flat naming convention. Set to `true` if your translation files follow a flat naming pattern like `locales/en.json` instead of `locales/en/file.json`. Defaults to `false`.
-- `name_pattern` — Custom pattern for naming translation files. Overrides default language-based naming. Must include both filename and extension if applicable (e.g., `"custom_name.json"` or `"**.yaml"`). Default behavior is used if not set.  
+- `name_pattern` — Custom pattern for naming translation files. Overrides default language-based naming. Must include both filename and extension if applicable (e.g., `"custom_name.json"` or `"**/*.yaml"`). Default behavior is used if not set.  
   + When `name_pattern` is set, the action respects your `translations_path` but does not append language-based folders. For example:  
     - `"en/**/custom_*.json"` will match nested files for the `en` locale  
     - `"custom_*.json"` matches files directly under the given path  
