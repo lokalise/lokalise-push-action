@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -39,8 +40,9 @@ func TestValidateEnvironment(t *testing.T) {
 		if baseLang != "en" {
 			t.Errorf("Expected baseLang 'en', got '%s'", baseLang)
 		}
-		if fileExt != "json" {
-			t.Errorf("Expected fileExt 'json', got '%s'", fileExt)
+		want := []string{"json"}
+		if !reflect.DeepEqual(fileExt, want) {
+			t.Fatalf("fileExt mismatch. want=%v got=%v", want, fileExt)
 		}
 		if namePattern != "custom_name.json" {
 			t.Errorf("Expected namePattern 'custom_name.json', got '%s'", namePattern)
@@ -51,13 +53,14 @@ func TestValidateEnvironment(t *testing.T) {
 		t.Setenv("TRANSLATIONS_PATH", "\npath1\n\npath2\n")
 		t.Setenv("BASE_LANG", "en")
 		t.Setenv("FILE_FORMAT", "json_structured")
-		t.Setenv("FILE_EXT", "json")
+		t.Setenv("FILE_EXT", "json\nyaml")
 		t.Setenv("NAME_PATTERN", "custom_name.json")
 
 		_, _, fileExt, _ := validateEnvironment()
 
-		if fileExt != "json" {
-			t.Errorf("Expected fileExt 'json', got '%s'", fileExt)
+		want := []string{"json", "yaml"}
+		if !reflect.DeepEqual(fileExt, want) {
+			t.Fatalf("fileExt mismatch. want=%v got=%v", want, fileExt)
 		}
 	})
 
@@ -84,7 +87,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 		paths       []string
 		flatNaming  bool
 		baseLang    string
-		fileExt     string
+		fileExt     []string
 		namePattern string
 		expected    []string
 		shouldError bool
@@ -94,10 +97,21 @@ func TestStoreTranslationPaths(t *testing.T) {
 			paths:      []string{"translations", "more_translations"},
 			flatNaming: true,
 			baseLang:   "en",
-			fileExt:    "json",
+			fileExt:    []string{"json"},
 			expected: []string{
 				filepath.Join(".", "translations", "en.json"),
 				filepath.Join(".", "more_translations", "en.json"),
+			},
+		},
+		{
+			name:       "Flat naming with valid path and multiple exts",
+			paths:      []string{"translations"},
+			flatNaming: true,
+			baseLang:   "en",
+			fileExt:    []string{"json", "yaml"},
+			expected: []string{
+				filepath.Join(".", "translations", "en.json"),
+				filepath.Join(".", "translations", "en.yaml"),
 			},
 		},
 		{
@@ -105,7 +119,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 			paths:       []string{"translations", "more_translations"},
 			flatNaming:  true,
 			baseLang:    "en",
-			fileExt:     "json",
+			fileExt:     []string{"json"},
 			namePattern: "custom_name.json",
 			expected: []string{
 				filepath.Join(".", "translations", "custom_name.json"),
@@ -117,7 +131,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 			paths:       []string{"translations"},
 			flatNaming:  false,
 			baseLang:    "en",
-			fileExt:     "json",
+			fileExt:     []string{"json"},
 			namePattern: "**.yaml",
 			expected: []string{
 				filepath.Join(".", "translations", "**.yaml"),
@@ -128,7 +142,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 			paths:      []string{"dir1/dir2/dir3", "another/nested/dir"},
 			flatNaming: true,
 			baseLang:   "fr",
-			fileExt:    "xml",
+			fileExt:    []string{"xml"},
 			expected: []string{
 				filepath.Join(".", "dir1", "dir2", "dir3", "fr.xml"),
 				filepath.Join(".", "another", "nested", "dir", "fr.xml"),
@@ -139,7 +153,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 			paths:      []string{"dir1/dir2/dir3", "another/nested/dir"},
 			flatNaming: false,
 			baseLang:   "de",
-			fileExt:    "properties",
+			fileExt:    []string{"properties"},
 			expected: []string{
 				filepath.Join(".", "dir1", "dir2", "dir3", "de", "**", "*.properties"),
 				filepath.Join(".", "another", "nested", "dir", "de", "**", "*.properties"),
@@ -151,7 +165,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 			paths:      []string{"."},
 			flatNaming: true,
 			baseLang:   "en",
-			fileExt:    "json",
+			fileExt:    []string{"json"},
 			expected: []string{
 				filepath.Join(".", ".", "en.json"), // normalizes to ././en.json, effectively ./en.json
 			},
@@ -161,7 +175,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 			paths:       []string{"."},
 			flatNaming:  false,
 			baseLang:    "en",
-			fileExt:     "json",
+			fileExt:     []string{"json"},
 			namePattern: "some_dir/**.yaml",
 			expected: []string{
 				filepath.Join(".", ".", "some_dir", "**.yaml"), // e.g. ././some_dir/**.yaml

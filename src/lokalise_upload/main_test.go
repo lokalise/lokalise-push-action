@@ -16,13 +16,11 @@ import (
 func TestMain(m *testing.M) {
 	// hijack os.Exit so we can assert hard exits
 	exitFunc = func(code int) { panic(fmt.Sprintf("Exit called with code %d", code)) }
-	logDebug = func(string, ...any) {}
 
 	code := m.Run()
 
 	// restore
 	exitFunc = os.Exit
-	logDebug = func(format string, a ...any) { fmt.Printf(format, a...); fmt.Println() }
 
 	os.Exit(code)
 }
