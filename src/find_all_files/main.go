@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,7 +26,7 @@ var exitFunc = os.Exit
 
 func main() {
 	// Read and validate required env variables.
-	translationsPaths, baseLang, fileExt, namePattern := validateEnvironment()
+	translationsPaths, baseLang, fileExts, namePattern := validateEnvironment()
 
 	// Parse FLAT_NAMING: true -> flat files at root; false -> nested per-language directories.
 	flatNaming, err := parsers.ParseBoolEnv("FLAT_NAMING")
@@ -34,7 +35,7 @@ func main() {
 	}
 
 	// Discover files according to the selected strategy.
-	allFiles, err := findAllTranslationFiles(translationsPaths, flatNaming, baseLang, fileExt, namePattern)
+	allFiles, err := findAllTranslationFiles(translationsPaths, flatNaming, baseLang, fileExts, namePattern)
 	if err != nil {
 		returnWithError(fmt.Sprintf("unable to find translation files: %v", err))
 	}
@@ -46,14 +47,31 @@ func main() {
 // validateEnvironment enforces presence of required inputs and performs simple inference (FILE_EXT ← FILE_FORMAT).
 func validateEnvironment() ([]string, string, []string, string) {
 	translationsPaths := parsers.ParseStringArrayEnv("TRANSLATIONS_PATH")
-	baseLang := os.Getenv("BASE_LANG")
-	namePattern := os.Getenv("NAME_PATTERN")
-
 	if len(translationsPaths) == 0 {
 		returnWithError("TRANSLATIONS_PATH is not set or is empty")
 	}
+
+	cleanedRoots := make([]string, 0, len(translationsPaths))
+	for _, r := range translationsPaths {
+		rr, err := ensureRepoRelative(r)
+		if err != nil {
+			returnWithError(fmt.Sprintf("invalid TRANSLATIONS_PATH %q: %v", r, err))
+		}
+		cleanedRoots = append(cleanedRoots, rr)
+	}
+
+	baseLang := os.Getenv("BASE_LANG")
 	if baseLang == "" {
 		returnWithError("BASE_LANG is not set or is empty")
+	}
+
+	namePattern := os.Getenv("NAME_PATTERN")
+	if namePattern != "" {
+		np, err := ensureRepoRelative(namePattern)
+		if err != nil {
+			returnWithError(fmt.Sprintf("invalid NAME_PATTERN %q: %v", namePattern, err))
+		}
+		namePattern = np
 	}
 
 	exts := parsers.ParseStringArrayEnv("FILE_EXT")
@@ -84,7 +102,7 @@ func validateEnvironment() ([]string, string, []string, string) {
 		returnWithError("no valid file extensions after normalization")
 	}
 
-	return translationsPaths, baseLang, norm, namePattern
+	return cleanedRoots, baseLang, norm, namePattern
 }
 
 // processAllFiles emits GitHub Action outputs.
@@ -126,13 +144,17 @@ func findAllTranslationFiles(paths []string, flatNaming bool, baseLang string, f
 
 		if namePattern != "" {
 			pattern := filepath.ToSlash(filepath.Join(path, namePattern))
+			pattern = strings.TrimPrefix(pattern, "./") // doublestar on DirFS(".") wants relative pattern
+
 			matches, err := doublestar.Glob(os.DirFS("."), pattern)
 			if err != nil {
 				return nil, fmt.Errorf("error applying name pattern %s: %v", pattern, err)
 			}
+
 			for _, m := range matches {
 				add(m)
 			}
+
 			continue
 		}
 
@@ -179,6 +201,30 @@ func findAllTranslationFiles(paths []string, flatNaming bool, baseLang string, f
 	sort.Strings(allFiles)
 
 	return allFiles, nil
+}
+
+func ensureRepoRelative(p string) (string, error) {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return "", errors.New("empty path")
+	}
+
+	clean := filepath.Clean(p)
+
+	if filepath.IsAbs(clean) {
+		return "", fmt.Errorf("path must be relative to repo: %q", p)
+	}
+
+	s := filepath.ToSlash(clean)
+	if strings.HasPrefix(s, "/") {
+		return "", fmt.Errorf("path must be relative to repo: %q", p)
+	}
+
+	if s == ".." || strings.HasPrefix(s, "../") {
+		return "", fmt.Errorf("path escapes repo root: %q", p)
+	}
+
+	return clean, nil
 }
 
 func returnWithError(message string) {

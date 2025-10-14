@@ -79,6 +79,115 @@ func TestValidateEnvironment(t *testing.T) {
 
 		validateEnvironment()
 	})
+
+	t.Run("Root translation path", func(t *testing.T) {
+		t.Setenv("TRANSLATIONS_PATH", ".")
+		t.Setenv("BASE_LANG", "en")
+		t.Setenv("FILE_EXT", "json")
+
+		paths, baseLang, exts, pattern := validateEnvironment()
+
+		if len(paths) != 1 || paths[0] != "." {
+			t.Fatalf("expected paths=[\".\"], got %v", paths)
+		}
+		if baseLang != "en" {
+			t.Fatalf("expected baseLang=en, got %s", baseLang)
+		}
+		if !reflect.DeepEqual(exts, []string{"json"}) {
+			t.Fatalf("expected exts=[json], got %v", exts)
+		}
+		if pattern != "" {
+			t.Fatalf("expected empty namePattern, got %q", pattern)
+		}
+	})
+
+	t.Run("Name pattern with ../", func(t *testing.T) {
+		t.Setenv("TRANSLATIONS_PATH", "locales")
+		t.Setenv("BASE_LANG", "en")
+		t.Setenv("FILE_EXT", "json")
+		t.Setenv("NAME_PATTERN", "../**/*.json")
+
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("expected panic for NAME_PATTERN escaping repo")
+			}
+		}()
+
+		validateEnvironment()
+	})
+
+	t.Run("Translation path with ../", func(t *testing.T) {
+		t.Setenv("TRANSLATIONS_PATH", "../locales")
+		t.Setenv("BASE_LANG", "en")
+		t.Setenv("FILE_EXT", "json")
+
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("expected panic for TRANSLATIONS_PATH escaping repo")
+			}
+		}()
+
+		validateEnvironment()
+	})
+
+	t.Run("TRANSLATIONS_PATH cleans to .. fails", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("expected panic when path cleans to '..'")
+			}
+		}()
+		t.Setenv("TRANSLATIONS_PATH", "a/../..")
+		t.Setenv("BASE_LANG", "en")
+		t.Setenv("FILE_EXT", "json")
+		validateEnvironment()
+	})
+
+	t.Run("TRANSLATIONS_PATH './path' is OK (relative)", func(t *testing.T) {
+		t.Setenv("TRANSLATIONS_PATH", "./path")
+		t.Setenv("BASE_LANG", "en")
+		t.Setenv("FILE_EXT", "json")
+
+		paths, _, _, _ := validateEnvironment()
+		if len(paths) != 1 || filepath.ToSlash(paths[0]) != "path" {
+			t.Fatalf("expected cleaned relative path 'path', got %v", paths)
+		}
+	})
+
+	t.Run("TRANSLATIONS_PATH '/path' fails (absolute)", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("expected panic for absolute TRANSLATIONS_PATH")
+			}
+		}()
+		t.Setenv("TRANSLATIONS_PATH", "/path")
+		t.Setenv("BASE_LANG", "en")
+		t.Setenv("FILE_EXT", "json")
+		validateEnvironment()
+	})
+
+	t.Run("NamePattern glob OK", func(t *testing.T) {
+		t.Setenv("TRANSLATIONS_PATH", "translations")
+		t.Setenv("BASE_LANG", "en")
+		t.Setenv("FILE_EXT", "json")
+		t.Setenv("NAME_PATTERN", "**/*.yaml")
+
+		_, _, _, pattern := validateEnvironment()
+		if got := filepath.ToSlash(pattern); got != "**/*.yaml" {
+			t.Fatalf("expected namePattern '**/*.yaml', got %q", got)
+		}
+	})
+
+	t.Run("NamePattern nested glob OK", func(t *testing.T) {
+		t.Setenv("TRANSLATIONS_PATH", "pkg/i18n")
+		t.Setenv("BASE_LANG", "en")
+		t.Setenv("FILE_EXT", "json")
+		t.Setenv("NAME_PATTERN", "en/**/custom_*.json")
+
+		_, _, _, pattern := validateEnvironment()
+		if got := filepath.ToSlash(pattern); got != "en/**/custom_*.json" {
+			t.Fatalf("expected pattern 'en/**/custom_*.json', got %q", got)
+		}
+	})
 }
 
 func TestStoreTranslationPaths(t *testing.T) {
@@ -128,7 +237,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 		},
 		{
 			name:        "Nested naming with custom pattern",
-			paths:       []string{"translations"},
+			paths:       []string{"translations", "translations"},
 			flatNaming:  false,
 			baseLang:    "en",
 			fileExt:     []string{"json"},
@@ -179,6 +288,17 @@ func TestStoreTranslationPaths(t *testing.T) {
 			namePattern: "some_dir/**.yaml",
 			expected: []string{
 				filepath.Join(".", ".", "some_dir", "**.yaml"), // e.g. ././some_dir/**.yaml
+			},
+		},
+		{
+			name:        "Complex custom name pattern",
+			paths:       []string{"translations"},
+			flatNaming:  false,
+			baseLang:    "en",
+			fileExt:     []string{"json"},
+			namePattern: "en/**/custom_*.json",
+			expected: []string{
+				filepath.Join(".", "translations", "en", "**", "custom_*.json"),
 			},
 		},
 	}

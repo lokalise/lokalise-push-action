@@ -293,6 +293,77 @@ func TestValidateEnvironment(t *testing.T) {
 
 		validateEnvironment()
 	})
+
+	t.Run("validate: roots cleaned and relative; dot root OK", func(t *testing.T) {
+		t.Setenv("TRANSLATIONS_PATH", ".\n./locales\nlocales/../locales/en/..")
+		t.Setenv("BASE_LANG", "en")
+		t.Setenv("FILE_EXT", "json")
+		paths, base, exts, pat := validateEnvironment()
+
+		if base != "en" || pat != "" {
+			t.Fatalf("unexpected base/pattern: %q / %q", base, pat)
+		}
+		want := []string{".", "locales", "locales"} // clean collapses
+		for i, p := range paths {
+			if filepath.ToSlash(p) != filepath.ToSlash(want[i]) {
+				t.Fatalf("paths[%d]=%q, want %q", i, p, want[i])
+			}
+		}
+		if !reflect.DeepEqual(exts, []string{"json"}) {
+			t.Fatalf("exts: %v", exts)
+		}
+	})
+
+	t.Run("validate: absolute and parent escape fail", func(t *testing.T) {
+		t.Setenv("BASE_LANG", "en")
+		t.Setenv("FILE_EXT", "json")
+
+		func() {
+			defer func() {
+				if r := recover(); r == nil {
+					t.Errorf("expected panic for absolute root")
+				}
+			}()
+			t.Setenv("TRANSLATIONS_PATH", "/etc/locales")
+			validateEnvironment()
+		}()
+
+		func() {
+			defer func() {
+				if r := recover(); r == nil {
+					t.Errorf("expected panic for parent escape root")
+				}
+			}()
+			t.Setenv("TRANSLATIONS_PATH", "../locales")
+			validateEnvironment()
+		}()
+	})
+
+	t.Run("validate: namePattern glob variants OK, but absolute fails", func(t *testing.T) {
+		t.Setenv("TRANSLATIONS_PATH", "translations")
+		t.Setenv("BASE_LANG", "en")
+		t.Setenv("FILE_EXT", "json")
+
+		// ok patterns
+		for _, np := range []string{"**/*.yaml", "en/**/custom_*.json", "dir/**/*.po"} {
+			t.Setenv("NAME_PATTERN", np)
+			_, _, _, pat := validateEnvironment()
+			if got := filepath.ToSlash(pat); got != np {
+				t.Fatalf("pattern got %q, want %q", got, np)
+			}
+		}
+
+		// absolute pattern -> fail
+		func() {
+			defer func() {
+				if r := recover(); r == nil {
+					t.Errorf("expected panic for absolute NAME_PATTERN")
+				}
+			}()
+			t.Setenv("NAME_PATTERN", "/tmp/**/*.json")
+			validateEnvironment()
+		}()
+	})
 }
 
 func TestProcessAllFiles(t *testing.T) {

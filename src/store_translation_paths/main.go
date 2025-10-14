@@ -1,10 +1,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/bodrovis/lokalise-actions-common/v2/parsers"
@@ -17,7 +19,7 @@ var exitFunc = os.Exit
 func main() {
 	// Read and validate inputs from the environment.
 	// This step makes sure we have enough info to derive a set of pathspecs.
-	translationsPaths, baseLang, fileExt, namePattern := validateEnvironment()
+	translationsPaths, baseLang, fileExts, namePattern := validateEnvironment()
 
 	// FLAT_NAMING determines whether translations are flat (e.g., locales/en.json)
 	// or nested by language (e.g., locales/en/**/*.json).
@@ -41,23 +43,43 @@ func main() {
 
 	// Emit one pathspec per line. Consumers expect newline-separated patterns.
 	// Each line can be a direct file path or a glob (git pathspec-style).
-	if err := storeTranslationPaths(translationsPaths, flatNaming, baseLang, fileExt, namePattern, file); err != nil {
+	if err := storeTranslationPaths(translationsPaths, flatNaming, baseLang, fileExts, namePattern, file); err != nil {
 		returnWithError(fmt.Sprintf("cannot store translation paths: %v", err))
 	}
 }
 
 // validateEnvironment reads required variables and applies simple inference.
-// Returns: (paths, base language code, file extension, optional custom name pattern).
+// Returns: (paths, base language code, file extensions, optional custom name pattern).
 func validateEnvironment() ([]string, string, []string, string) {
 	translationsPaths := parsers.ParseStringArrayEnv("TRANSLATIONS_PATH")
-	baseLang := os.Getenv("BASE_LANG")
-	namePattern := os.Getenv("NAME_PATTERN")
-
 	if len(translationsPaths) == 0 {
 		returnWithError("TRANSLATIONS_PATH is not set or is empty")
 	}
+
+	// map ensureRepoRelative over roots
+	cleanedRoots := make([]string, 0, len(translationsPaths))
+	for _, r := range translationsPaths {
+		rr, err := ensureRepoRelative(r)
+		if err != nil {
+			returnWithError(fmt.Sprintf("invalid TRANSLATIONS_PATH %q: %v", r, err))
+		}
+		cleanedRoots = append(cleanedRoots, rr)
+	}
+
+	baseLang := os.Getenv("BASE_LANG")
 	if baseLang == "" {
 		returnWithError("BASE_LANG is not set or is empty")
+	}
+
+	namePattern := os.Getenv("NAME_PATTERN")
+
+	if namePattern != "" {
+		// forbid absolute / escaping
+		if np, err := ensureRepoRelative(namePattern); err != nil {
+			returnWithError(fmt.Sprintf("invalid NAME_PATTERN %q: %v", namePattern, err))
+		} else {
+			namePattern = np
+		}
 	}
 
 	// Support single or multiple FILE_EXT values (newline-separated).
@@ -89,7 +111,7 @@ func validateEnvironment() ([]string, string, []string, string) {
 		returnWithError("no valid file extensions after normalization")
 	}
 
-	return translationsPaths, baseLang, norm, namePattern
+	return cleanedRoots, baseLang, norm, namePattern
 }
 
 // storeTranslationPaths emits one pathspec per root and (if applicable) per extension.
@@ -117,10 +139,6 @@ func storeTranslationPaths(paths []string, flatNaming bool, baseLang string, fil
 	}
 
 	for _, root := range paths {
-		if strings.TrimSpace(root) == "" {
-			continue
-		}
-
 		if namePattern != "" {
 			// Custom pattern takes precedence; caller is responsible for including
 			// filename/ext or globs. We don't expand it per-extension.
@@ -131,7 +149,10 @@ func storeTranslationPaths(paths []string, flatNaming bool, baseLang string, fil
 		}
 
 		// Generate per-extension patterns based on layout.
-		for _, ext := range fileExts {
+		exts := append([]string(nil), fileExts...)
+		sort.Strings(exts)
+
+		for _, ext := range exts {
 			ext = strings.TrimSpace(ext)
 			if ext == "" {
 				continue
@@ -153,6 +174,53 @@ func storeTranslationPaths(paths []string, flatNaming bool, baseLang string, fil
 	}
 
 	return nil
+}
+
+// helper: ensure path is repo-relative
+//
+// Allowed examples:
+//   - "."                                 → repository root
+//   - "path"                              → relative path without a leading dot
+//   - "./path"                            → relative path with an explicit dot
+//   - "dir/subdir"                        → nested directories
+//   - "dir/**/*.json"                     → glob pattern searching within the root
+//   - "**/*.yaml"                         → recursive glob pattern inside the root
+//   - "en/**/custom_*.json"               → combined glob pattern (commonly used for NAME_PATTERN)
+//
+// Disallowed examples:
+//   - Absolute paths:
+//     "/path", "C:\\path", "C:/path"    → treated as outside the repository
+//   - Escaping above the repo root:
+//     "../something", "a/../../b"       → not allowed (escape from repo root)
+//   - Empty strings or whitespace-only values
+//
+// Logic:
+//   - filepath.Clean collapses ".", "..", and duplicate slashes.
+//   - If the result is absolute or starts with "../", it is rejected.
+//   - Everything else is considered a valid relative path inside the repository.
+func ensureRepoRelative(p string) (string, error) {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return "", errors.New("empty path")
+	}
+
+	clean := filepath.Clean(p)
+	if filepath.IsAbs(clean) {
+		return "", fmt.Errorf("path must be relative to repo: %q", p)
+	}
+
+	// normalize to forward slashes for the checks
+	s := filepath.ToSlash(clean)
+
+	if strings.HasPrefix(s, "/") {
+		return "", fmt.Errorf("path must be relative to repo: %q", p)
+	}
+
+	if s == ".." || strings.HasPrefix(s, "../") {
+		return "", fmt.Errorf("path escapes repo root: %q", p)
+	}
+
+	return clean, nil
 }
 
 // returnWithError prints an error and exits non-zero.
