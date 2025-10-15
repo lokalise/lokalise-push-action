@@ -51,19 +51,9 @@ func main() {
 // validateEnvironment reads required variables and applies simple inference.
 // Returns: (paths, base language code, file extensions, optional custom name pattern).
 func validateEnvironment() ([]string, string, []string, string) {
-	translationsPaths := parsers.ParseStringArrayEnv("TRANSLATIONS_PATH")
-	if len(translationsPaths) == 0 {
-		returnWithError("TRANSLATIONS_PATH is not set or is empty")
-	}
-
-	// map ensureRepoRelative over roots
-	cleanedRoots := make([]string, 0, len(translationsPaths))
-	for _, r := range translationsPaths {
-		rr, err := ensureRepoRelative(r)
-		if err != nil {
-			returnWithError(fmt.Sprintf("invalid TRANSLATIONS_PATH %q: %v", r, err))
-		}
-		cleanedRoots = append(cleanedRoots, rr)
+	paths, err := parsers.ParseRepoRelativePathsEnv("TRANSLATIONS_PATH")
+	if err != nil {
+		returnWithError(fmt.Sprintf("failed to process params: %v", err))
 	}
 
 	baseLang := os.Getenv("BASE_LANG")
@@ -111,7 +101,7 @@ func validateEnvironment() ([]string, string, []string, string) {
 		returnWithError("no valid file extensions after normalization")
 	}
 
-	return cleanedRoots, baseLang, norm, namePattern
+	return paths, baseLang, norm, namePattern
 }
 
 // storeTranslationPaths emits one pathspec per root and (if applicable) per extension.
@@ -176,28 +166,6 @@ func storeTranslationPaths(paths []string, flatNaming bool, baseLang string, fil
 	return nil
 }
 
-// helper: ensure path is repo-relative
-//
-// Allowed examples:
-//   - "."                                 → repository root
-//   - "path"                              → relative path without a leading dot
-//   - "./path"                            → relative path with an explicit dot
-//   - "dir/subdir"                        → nested directories
-//   - "dir/**/*.json"                     → glob pattern searching within the root
-//   - "**/*.yaml"                         → recursive glob pattern inside the root
-//   - "en/**/custom_*.json"               → combined glob pattern (commonly used for NAME_PATTERN)
-//
-// Disallowed examples:
-//   - Absolute paths:
-//     "/path", "C:\\path", "C:/path"    → treated as outside the repository
-//   - Escaping above the repo root:
-//     "../something", "a/../../b"       → not allowed (escape from repo root)
-//   - Empty strings or whitespace-only values
-//
-// Logic:
-//   - filepath.Clean collapses ".", "..", and duplicate slashes.
-//   - If the result is absolute or starts with "../", it is rejected.
-//   - Everything else is considered a valid relative path inside the repository.
 func ensureRepoRelative(p string) (string, error) {
 	p = strings.TrimSpace(p)
 	if p == "" {
@@ -209,7 +177,6 @@ func ensureRepoRelative(p string) (string, error) {
 		return "", fmt.Errorf("path must be relative to repo: %q", p)
 	}
 
-	// normalize to forward slashes for the checks
 	s := filepath.ToSlash(clean)
 
 	if strings.HasPrefix(s, "/") {

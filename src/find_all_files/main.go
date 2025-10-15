@@ -46,18 +46,9 @@ func main() {
 
 // validateEnvironment enforces presence of required inputs and performs simple inference (FILE_EXT ← FILE_FORMAT).
 func validateEnvironment() ([]string, string, []string, string) {
-	translationsPaths := parsers.ParseStringArrayEnv("TRANSLATIONS_PATH")
-	if len(translationsPaths) == 0 {
-		returnWithError("TRANSLATIONS_PATH is not set or is empty")
-	}
-
-	cleanedRoots := make([]string, 0, len(translationsPaths))
-	for _, r := range translationsPaths {
-		rr, err := ensureRepoRelative(r)
-		if err != nil {
-			returnWithError(fmt.Sprintf("invalid TRANSLATIONS_PATH %q: %v", r, err))
-		}
-		cleanedRoots = append(cleanedRoots, rr)
+	paths, err := parsers.ParseRepoRelativePathsEnv("TRANSLATIONS_PATH")
+	if err != nil {
+		returnWithError(fmt.Sprintf("failed to process params: %v", err))
 	}
 
 	baseLang := os.Getenv("BASE_LANG")
@@ -102,7 +93,7 @@ func validateEnvironment() ([]string, string, []string, string) {
 		returnWithError("no valid file extensions after normalization")
 	}
 
-	return cleanedRoots, baseLang, norm, namePattern
+	return paths, baseLang, norm, namePattern
 }
 
 // processAllFiles emits GitHub Action outputs.

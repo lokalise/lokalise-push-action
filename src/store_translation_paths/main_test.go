@@ -85,19 +85,20 @@ func TestValidateEnvironment(t *testing.T) {
 		t.Setenv("BASE_LANG", "en")
 		t.Setenv("FILE_EXT", "json")
 
-		paths, baseLang, exts, pattern := validateEnvironment()
+		paths, baseLang, fileExt, namePattern := validateEnvironment()
 
 		if len(paths) != 1 || paths[0] != "." {
-			t.Fatalf("expected paths=[\".\"], got %v", paths)
+			t.Errorf("Unexpected translations paths: %v", paths)
 		}
 		if baseLang != "en" {
-			t.Fatalf("expected baseLang=en, got %s", baseLang)
+			t.Errorf("Expected baseLang 'en', got '%s'", baseLang)
 		}
-		if !reflect.DeepEqual(exts, []string{"json"}) {
-			t.Fatalf("expected exts=[json], got %v", exts)
+		want := []string{"json"}
+		if !reflect.DeepEqual(fileExt, want) {
+			t.Fatalf("fileExt mismatch. want=%v got=%v", want, fileExt)
 		}
-		if pattern != "" {
-			t.Fatalf("expected empty namePattern, got %q", pattern)
+		if namePattern != "" {
+			t.Errorf("Expected namePattern '', got '%s'", namePattern)
 		}
 	})
 
