@@ -188,8 +188,8 @@ func findAllTranslationFiles(paths []string, flatNaming bool, baseLang string, f
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "Found %d unique files\n", len(allFiles))
 	sort.Strings(allFiles)
+	fmt.Fprintf(os.Stderr, "Found %d unique files\n", len(allFiles))
 
 	return allFiles, nil
 }
