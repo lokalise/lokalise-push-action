@@ -17,13 +17,6 @@ import (
 // Overridable in tests to assert exit behavior without terminating the process.
 var exitFunc = os.Exit
 
-// logDebug is a function variable used for debug output (e.g., dumping API params).
-// Tests can override it (e.g., make it a no-op in TestMain) to keep logs clean.
-var logDebug = func(format string, a ...any) {
-	fmt.Printf(format, a...)
-	fmt.Println()
-}
-
 const (
 	defaultMaxRetries       = 3   // Default number of retries on rate limits
 	defaultInitialSleepTime = 1   // Initial backoff (seconds); client handles exponential backoff
@@ -226,13 +219,6 @@ func buildUploadParams(config UploadConfig) client.UploadParams {
 			returnWithError("Invalid additional_params (must be JSON object): " + err.Error())
 		}
 		maps.Copy(params, add) // last write wins
-	}
-
-	// Debug dump for CI visibility (safe: tokens/IDs are not part of params).
-	if data, err := json.MarshalIndent(params, "", "  "); err == nil {
-		logDebug("Debug: final Lokalise upload parameters for %s:\n%s", config.FilePath, string(data))
-	} else {
-		logDebug("Debug: failed to marshal upload params for %s: %v", config.FilePath, err)
 	}
 
 	return params

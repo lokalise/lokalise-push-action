@@ -1,10 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/bodrovis/lokalise-actions-common/v2/parsers"
 )
@@ -16,7 +19,7 @@ var exitFunc = os.Exit
 func main() {
 	// Read and validate inputs from the environment.
 	// This step makes sure we have enough info to derive a set of pathspecs.
-	translationsPaths, baseLang, fileExt, namePattern := validateEnvironment()
+	translationsPaths, baseLang, fileExts, namePattern := validateEnvironment()
 
 	// FLAT_NAMING determines whether translations are flat (e.g., locales/en.json)
 	// or nested by language (e.g., locales/en/**/*.json).
@@ -40,73 +43,151 @@ func main() {
 
 	// Emit one pathspec per line. Consumers expect newline-separated patterns.
 	// Each line can be a direct file path or a glob (git pathspec-style).
-	if err := storeTranslationPaths(translationsPaths, flatNaming, baseLang, fileExt, namePattern, file); err != nil {
+	if err := storeTranslationPaths(translationsPaths, flatNaming, baseLang, fileExts, namePattern, file); err != nil {
 		returnWithError(fmt.Sprintf("cannot store translation paths: %v", err))
 	}
 }
 
 // validateEnvironment reads required variables and applies simple inference.
-// Returns: (paths, base language code, file extension, optional custom name pattern).
-func validateEnvironment() ([]string, string, string, string) {
-	translationsPaths := parsers.ParseStringArrayEnv("TRANSLATIONS_PATH")
-	baseLang := os.Getenv("BASE_LANG")
-	namePattern := os.Getenv("NAME_PATTERN")
-
-	if len(translationsPaths) == 0 {
-		returnWithError("TRANSLATIONS_PATH is not set or is empty")
+// Returns: (paths, base language code, file extensions, optional custom name pattern).
+func validateEnvironment() ([]string, string, []string, string) {
+	paths, err := parsers.ParseRepoRelativePathsEnv("TRANSLATIONS_PATH")
+	if err != nil {
+		returnWithError(fmt.Sprintf("failed to process params: %v", err))
 	}
+
+	baseLang := os.Getenv("BASE_LANG")
 	if baseLang == "" {
 		returnWithError("BASE_LANG is not set or is empty")
 	}
 
-	// FILE_EXT may be provided explicitly; otherwise we fall back to FILE_FORMAT.
-	// Note: we do not normalize here (e.g., trimming leading dot). Downstream
-	// code should be tolerant, but normalization could make matching more robust.
-	fileExt := os.Getenv("FILE_EXT")
-	if fileExt == "" {
-		fileExt = os.Getenv("FILE_FORMAT")
+	namePattern := os.Getenv("NAME_PATTERN")
+
+	if namePattern != "" {
+		// forbid absolute / escaping
+		if np, err := ensureRepoRelative(namePattern); err != nil {
+			returnWithError(fmt.Sprintf("invalid NAME_PATTERN %q: %v", namePattern, err))
+		} else {
+			namePattern = np
+		}
 	}
-	if fileExt == "" {
+
+	// Support single or multiple FILE_EXT values (newline-separated).
+	exts := parsers.ParseStringArrayEnv("FILE_EXT")
+	if len(exts) == 0 {
+		if v := os.Getenv("FILE_FORMAT"); v != "" {
+			exts = []string{v}
+		}
+	}
+	if len(exts) == 0 {
 		returnWithError("Cannot infer file extension. Make sure FILE_FORMAT or FILE_EXT environment variables are set")
 	}
 
-	return translationsPaths, baseLang, fileExt, namePattern
+	// normalize + dedupe (lowercase, trim, drop leading dot)
+	seen := make(map[string]struct{}, len(exts))
+	norm := make([]string, 0, len(exts))
+	for _, e := range exts {
+		e = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(e, ".")))
+		if e == "" {
+			continue
+		}
+		if _, ok := seen[e]; ok {
+			continue
+		}
+		seen[e] = struct{}{}
+		norm = append(norm, e)
+	}
+	if len(norm) == 0 {
+		returnWithError("no valid file extensions after normalization")
+	}
+
+	return paths, baseLang, norm, namePattern
 }
 
-// storeTranslationPaths writes one pathspec per input path, based on layout rules:
-// - With NAME_PATTERN: use it as-is under each root (caller is responsible for including filename/ext or globs).
-// - Flat naming: a single file per root, e.g. "./locales/en.json".
-// - Nested naming: a glob matching all files for base lang, e.g. "./locales/en/**/*.json".
-func storeTranslationPaths(paths []string, flatNaming bool, baseLang, fileExt, namePattern string, writer io.Writer) error {
-	for _, path := range paths {
-		if path == "" {
+// storeTranslationPaths emits one pathspec per root and (if applicable) per extension.
+// Output is newline-separated, ready for consumption by changed-files (files_from_source_file).
+// Rules:
+//   - If namePattern is set, it fully overrides defaults and is written once per root.
+//     The pattern may include globs (e.g., "**/*.yaml") and/or a concrete filename.
+//   - If flatNaming is true  -> "<root>/<baseLang>.<ext>"
+//   - If flatNaming is false -> "<root>/<baseLang>/**/*.ext"
+func storeTranslationPaths(paths []string, flatNaming bool, baseLang string, fileExts []string, namePattern string, writer io.Writer) error {
+	seen := make(map[string]struct{}) // avoid duplicates across roots/exts
+
+	writeLine := func(p string) error {
+		// Normalize to forward slashes for cross-platform consistency and
+		// anchor to repo root with a leading "./" (helps avoid CWD surprises).
+		line := filepath.ToSlash(filepath.Join(".", p))
+		if _, ok := seen[line]; ok {
+			return nil
+		}
+		seen[line] = struct{}{}
+		if _, err := writer.Write([]byte(line + "\n")); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	for _, root := range paths {
+		if namePattern != "" {
+			// Custom pattern takes precedence; caller is responsible for including
+			// filename/ext or globs. We don't expand it per-extension.
+			if err := writeLine(filepath.Join(root, namePattern)); err != nil {
+				return err
+			}
 			continue
 		}
 
-		var formattedPath string
-		if namePattern != "" {
-			// Custom pattern fully overrides default construction.
-			// It may be a static file name (e.g., "custom.json") or a glob (e.g., "**/*.yaml").
-			formattedPath = filepath.Join(".", path, namePattern)
-		} else if flatNaming {
-			// Flat layout: one file per language at the root: "<root>/<lang>.<ext>"
-			formattedPath = filepath.Join(".", path, fmt.Sprintf("%s.%s", baseLang, fileExt))
-		} else {
-			// Nested layout: include everything for the base language under its subdirectory.
-			// Example: "./locales/en/**/*.json"
-			formattedPath = filepath.Join(".", path, baseLang, "**", fmt.Sprintf("*.%s", fileExt))
-		}
+		// Generate per-extension patterns based on layout.
+		exts := append([]string(nil), fileExts...)
+		sort.Strings(exts)
 
-		// Normalize to forward slashes for cross-platform consistency.
-		normalizedPath := filepath.ToSlash(formattedPath)
+		for _, ext := range exts {
+			ext = strings.TrimSpace(ext)
+			if ext == "" {
+				continue
+			}
 
-		// Write one pattern per line: newline-separated list is what the consumer expects.
-		if _, err := writer.Write([]byte(normalizedPath + "\n")); err != nil {
-			return err
+			var pat string
+			if flatNaming {
+				// <root>/<baseLang>.<ext>
+				pat = filepath.Join(root, fmt.Sprintf("%s.%s", baseLang, ext))
+			} else {
+				// <root>/<baseLang>/**/*.ext
+				pat = filepath.Join(root, baseLang, "**", fmt.Sprintf("*.%s", ext))
+			}
+
+			if err := writeLine(pat); err != nil {
+				return err
+			}
 		}
 	}
 
 	return nil
+}
+
+func ensureRepoRelative(p string) (string, error) {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return "", errors.New("empty path")
+	}
+
+	clean := filepath.Clean(p)
+	if filepath.IsAbs(clean) {
+		return "", fmt.Errorf("path must be relative to repo: %q", p)
+	}
+
+	s := filepath.ToSlash(clean)
+
+	if strings.HasPrefix(s, "/") {
+		return "", fmt.Errorf("path must be relative to repo: %q", p)
+	}
+
+	if s == ".." || strings.HasPrefix(s, "../") {
+		return "", fmt.Errorf("path escapes repo root: %q", p)
+	}
+
+	return clean, nil
 }
 
 // returnWithError prints an error and exits non-zero.

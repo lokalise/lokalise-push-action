@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,7 +26,7 @@ var exitFunc = os.Exit
 
 func main() {
 	// Read and validate required env variables.
-	translationsPaths, baseLang, fileExt, namePattern := validateEnvironment()
+	translationsPaths, baseLang, fileExts, namePattern := validateEnvironment()
 
 	// Parse FLAT_NAMING: true -> flat files at root; false -> nested per-language directories.
 	flatNaming, err := parsers.ParseBoolEnv("FLAT_NAMING")
@@ -34,7 +35,7 @@ func main() {
 	}
 
 	// Discover files according to the selected strategy.
-	allFiles, err := findAllTranslationFiles(translationsPaths, flatNaming, baseLang, fileExt, namePattern)
+	allFiles, err := findAllTranslationFiles(translationsPaths, flatNaming, baseLang, fileExts, namePattern)
 	if err != nil {
 		returnWithError(fmt.Sprintf("unable to find translation files: %v", err))
 	}
@@ -44,28 +45,55 @@ func main() {
 }
 
 // validateEnvironment enforces presence of required inputs and performs simple inference (FILE_EXT ← FILE_FORMAT).
-func validateEnvironment() ([]string, string, string, string) {
-	translationsPaths := parsers.ParseStringArrayEnv("TRANSLATIONS_PATH")
-	baseLang := os.Getenv("BASE_LANG")
-	namePattern := os.Getenv("NAME_PATTERN")
-
-	if len(translationsPaths) == 0 {
-		returnWithError("TRANSLATIONS_PATH is not set or is empty")
+func validateEnvironment() ([]string, string, []string, string) {
+	paths, err := parsers.ParseRepoRelativePathsEnv("TRANSLATIONS_PATH")
+	if err != nil {
+		returnWithError(fmt.Sprintf("failed to process params: %v", err))
 	}
+
+	baseLang := os.Getenv("BASE_LANG")
 	if baseLang == "" {
 		returnWithError("BASE_LANG is not set or is empty")
 	}
 
-	// FILE_EXT takes precedence; fall back to FILE_FORMAT for convenience.
-	fileExt := os.Getenv("FILE_EXT")
-	if fileExt == "" {
-		fileExt = os.Getenv("FILE_FORMAT")
+	namePattern := os.Getenv("NAME_PATTERN")
+	if namePattern != "" {
+		np, err := ensureRepoRelative(namePattern)
+		if err != nil {
+			returnWithError(fmt.Sprintf("invalid NAME_PATTERN %q: %v", namePattern, err))
+		}
+		namePattern = np
 	}
-	if fileExt == "" {
+
+	exts := parsers.ParseStringArrayEnv("FILE_EXT")
+	if len(exts) == 0 {
+		if v := os.Getenv("FILE_FORMAT"); v != "" {
+			exts = []string{v}
+		}
+	}
+	if len(exts) == 0 {
 		returnWithError("Cannot infer file extension. Make sure FILE_FORMAT or FILE_EXT environment variables are set")
 	}
 
-	return translationsPaths, baseLang, fileExt, namePattern
+	// normalize + dedupe
+	seen := make(map[string]struct{}, len(exts))
+	norm := make([]string, 0, len(exts))
+	for _, e := range exts {
+		e = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(e, ".")))
+		if e == "" {
+			continue
+		}
+		if _, ok := seen[e]; ok {
+			continue
+		}
+		seen[e] = struct{}{}
+		norm = append(norm, e)
+	}
+	if len(norm) == 0 {
+		returnWithError("no valid file extensions after normalization")
+	}
+
+	return paths, baseLang, norm, namePattern
 }
 
 // processAllFiles emits GitHub Action outputs.
@@ -87,16 +115,17 @@ func processAllFiles(allFiles []string, writeOutput func(key, value string) bool
 // - NAME_PATTERN (if provided) overrides layout rules and is treated as a glob under the root.
 // - Flat: single file "<root>/<baseLang>.<ext>" if present.
 // - Nested: walk "<root>/<baseLang>" and collect files ending with ".<ext>".
-func findAllTranslationFiles(paths []string, flatNaming bool, baseLang, fileExt string, namePattern string) ([]string, error) {
+func findAllTranslationFiles(paths []string, flatNaming bool, baseLang string, fileExts []string, namePattern string) ([]string, error) {
 	var allFiles []string
-	seen := make(map[string]struct{}) // dedup set
+	seen := make(map[string]struct{})
 
-	addFile := func(p string) {
+	add := func(p string) {
 		p = filepath.ToSlash(p)
-		if _, exists := seen[p]; !exists {
-			seen[p] = struct{}{}
-			allFiles = append(allFiles, p)
+		if _, ok := seen[p]; ok {
+			return
 		}
+		seen[p] = struct{}{}
+		allFiles = append(allFiles, p)
 	}
 
 	for _, path := range paths {
@@ -105,54 +134,88 @@ func findAllTranslationFiles(paths []string, flatNaming bool, baseLang, fileExt 
 		}
 
 		if namePattern != "" {
-			// Custom pattern overrides defaults
 			pattern := filepath.ToSlash(filepath.Join(path, namePattern))
+			pattern = strings.TrimPrefix(pattern, "./") // doublestar on DirFS(".") wants relative pattern
 
 			matches, err := doublestar.Glob(os.DirFS("."), pattern)
 			if err != nil {
 				return nil, fmt.Errorf("error applying name pattern %s: %v", pattern, err)
 			}
+
 			for _, m := range matches {
-				addFile(m)
+				add(m)
 			}
 
-		} else if flatNaming {
-			targetFile := filepath.Join(path, fmt.Sprintf("%s.%s", baseLang, fileExt))
-			if info, err := os.Stat(targetFile); err == nil && !info.IsDir() {
-				addFile(targetFile)
-			} else if err != nil && !os.IsNotExist(err) {
-				return nil, fmt.Errorf("error accessing file %s: %v", targetFile, err)
-			}
+			continue
+		}
 
-		} else {
-			targetDir := filepath.Join(path, baseLang)
-			if info, err := os.Stat(targetDir); err == nil && info.IsDir() {
-				err := filepath.WalkDir(targetDir, func(filePath string, d os.DirEntry, err error) error {
-					if err != nil {
-						return fmt.Errorf("error walking through directory %s: %v", targetDir, err)
-					}
-					if !d.IsDir() && strings.HasSuffix(strings.ToLower(d.Name()), fmt.Sprintf(".%s", strings.ToLower(fileExt))) {
-						addFile(filePath)
-					}
-					return nil
-				})
+		if flatNaming {
+			for _, ext := range fileExts {
+				target := filepath.Join(path, fmt.Sprintf("%s.%s", baseLang, ext))
+				if info, err := os.Stat(target); err == nil && !info.IsDir() {
+					add(target)
+				} else if err != nil && !os.IsNotExist(err) {
+					return nil, fmt.Errorf("error accessing file %s: %v", target, err)
+				}
+			}
+			continue
+		}
+
+		// nested
+		targetDir := filepath.Join(path, baseLang)
+		if info, err := os.Stat(targetDir); err == nil && info.IsDir() {
+			err := filepath.WalkDir(targetDir, func(fp string, d os.DirEntry, err error) error {
 				if err != nil {
-					return nil, err
+					return fmt.Errorf("error walking through directory %s: %v", targetDir, err)
 				}
-			} else if err != nil {
-				if !os.IsNotExist(err) {
-					return nil, fmt.Errorf("error accessing directory %s: %v", targetDir, err)
+				if d.IsDir() {
+					return nil
 				}
+				name := d.Name()
+				for _, ext := range fileExts {
+					if strings.EqualFold(filepath.Ext(name), "."+ext) {
+						add(fp)
+						break
+					}
+				}
+				return nil
+			})
+			if err != nil {
+				return nil, err
 			}
+		} else if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("error accessing directory %s: %v", targetDir, err)
 		}
 	}
 
-	// Sort deterministically for reproducible output
 	sort.Strings(allFiles)
-
 	fmt.Fprintf(os.Stderr, "Found %d unique files\n", len(allFiles))
 
 	return allFiles, nil
+}
+
+func ensureRepoRelative(p string) (string, error) {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return "", errors.New("empty path")
+	}
+
+	clean := filepath.Clean(p)
+
+	if filepath.IsAbs(clean) {
+		return "", fmt.Errorf("path must be relative to repo: %q", p)
+	}
+
+	s := filepath.ToSlash(clean)
+	if strings.HasPrefix(s, "/") {
+		return "", fmt.Errorf("path must be relative to repo: %q", p)
+	}
+
+	if s == ".." || strings.HasPrefix(s, "../") {
+		return "", fmt.Errorf("path escapes repo root: %q", p)
+	}
+
+	return clean, nil
 }
 
 func returnWithError(message string) {

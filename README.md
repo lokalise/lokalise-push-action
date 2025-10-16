@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
 
       - name: Push to Lokalise
-        uses: lokalise/lokalise-push-action@v4.0.1
+        uses: lokalise/lokalise-push-action@v4.1.0
         with:
           api_token: ${{ secrets.LOKALISE_API_TOKEN }}
           project_id: LOKALISE_PROJECT_ID
@@ -39,7 +39,8 @@ jobs:
           translations_path: |
             TRANSLATIONS_PATH1
             TRANSLATIONS_PATH2
-          file_format: json
+          file_ext: |
+            json
           additional_params: >
             {
               "convert_placeholders": true,
@@ -56,9 +57,19 @@ You'll need to provide some parameters for the action. These can be set as envir
 - `api_token` — Lokalise API token with read/write permissions.
 - `project_id` — Your Lokalise project ID.
 - `translations_path` — One or more paths to your translations. For example, if your translations are stored in the `locales` folder at the project root, use `locales` (leave out leading and trailing slashes). Defaults to `locales`.
-- `file_format` — Defines the format of your translation files, such as `json` for JSON files. Defaults to `json`. This format determines how translation files are processed and also influences the file extension used when searching for them. However, some specific formats, such as `json_structured`, still use the generic `.json` extension. If you're using such a format, make sure to set the `file_ext` parameter explicitly to match the correct extension for your files. Alternatively, configure the `name_pattern` parameter.
+- `file_format` — **⚠️ DEPRECATED**: use `file_ext` instead. *This will be removed in the next stable release.* Defines the format of your translation files, such as `json` for JSON files. Defaults to `json`. This format determines how translation files are processed and also influences the file extension used when searching for them. However, some specific formats, such as `json_structured`, still use the generic `.json` extension. If you're using such a format, make sure to set the `file_ext` parameter explicitly to match the correct extension for your files. Alternatively, configure the `name_pattern` parameter.
 - `base_lang` — The base language of your project (e.g., `en` for English). Defaults to `en`.
-- `file_ext` (*not strictly mandatory but still recommended*) — Custom file extension to use when searching for translation files (without leading dot, for example `yml`). By default, the extension is inferred from the `file_format` value. However, for certain formats (e.g., `json_structured`), the files may still have a generic extension (e.g., `.json`). In such cases, this parameter allows specifying the correct extension manually to ensure proper file matching. This parameter has no effect when the `name_pattern` is provided.
+- `file_ext` — File extension(s) to use when searching for translation files without leading dot. This parameter has no effect when the `name_pattern` is provided.
+
+```yaml
+file_ext: json
+
+# OR
+
+file_ext: |
+  strings
+  stringsdict
+```
 
 ### File and API options
 
