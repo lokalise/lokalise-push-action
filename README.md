@@ -57,7 +57,7 @@ You'll need to provide some parameters for the action. These can be set as envir
 - `api_token` — Lokalise API token with read/write permissions.
 - `project_id` — Your Lokalise project ID.
 - `translations_path` — One or more paths to your translations. For example, if your translations are stored in the `locales` folder at the project root, use `locales` (leave out leading and trailing slashes). Defaults to `locales`.
-- `file_format` — **⚠️ DEPRECATED**: use `file_ext` instead. *This will be removed in the next stable release.* Defines the format of your translation files, such as `json` for JSON files. Defaults to `json`. This format determines how translation files are processed and also influences the file extension used when searching for them. However, some specific formats, such as `json_structured`, still use the generic `.json` extension. If you're using such a format, make sure to set the `file_ext` parameter explicitly to match the correct extension for your files. Alternatively, configure the `name_pattern` parameter.
+- `file_format` — **⚠️ DEPRECATED**: use `file_ext` instead. *This will be removed in the next major release.* Defines the format of your translation files, such as `json` for JSON files. Defaults to `json`. This format determines how translation files are processed and also influences the file extension used when searching for them. However, some specific formats, such as `json_structured`, still use the generic `.json` extension. If you're using such a format, make sure to set the `file_ext` parameter explicitly to match the correct extension for your files. Alternatively, configure the `name_pattern` parameter.
 - `base_lang` — The base language of your project (e.g., `en` for English). Defaults to `en`.
 - `file_ext` — File extension(s) to use when searching for translation files without leading dot. This parameter has no effect when the `name_pattern` is provided.
 
@@ -182,6 +182,16 @@ By default, the following API parameters and headers are set when uploading file
 - `tag_skipped_keys` — Set to `true`.
 - `tag_updated_keys` — Set to `true`.
 - `tags` — Set to the branch name that triggered the workflow.
+
+## Checksums and attestation
+
+You'll find checksums for the compiled binaries in the `bin/` directory. The checksums are also signed and attested. To verify, install Cosign, clone the repo, and run the following commands in the project root:
+
+```
+cosign verify-blob-attestation --bundle bin/checksums.txt.attestation --certificate-identity "https://github.com/lokalise/lokalise-push-action/.github/workflows/build-to-bin.yml@refs/heads/main" --certificate-oidc-issuer "https://token.actions.githubusercontent.com" --type custom bin/checksums.txt
+
+cosign verify-blob --bundle bin/checksums.txt.sigstore --certificate-identity-regexp "^https://github.com/lokalise/lokalise-push-action/\.github/workflows/build-to-bin\.yml@.*$" --certificate-oidc-issuer "https://token.actions.githubusercontent.com" bin/checksums.txt
+```
 
 ## License
 
