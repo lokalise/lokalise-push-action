@@ -4,12 +4,12 @@
 
 GitHub action to upload changed translation files in the base language from your GitHub repository to [Lokalise TMS](https://lokalise.com/).
 
+*To find documentation for the **stable version 3**, [browse the v3 tag](https://github.com/lokalise/lokalise-push-action/tree/v3).*
+
 * Step-by-step tutorial covering the usage of this action is available on [Lokalise Developer Hub](https://developers.lokalise.com/docs/github-actions).
 * If you're looking for an in-depth tutorial, [check out our blog post](https://lokalise.com/blog/github-actions-for-lokalise-translation/)
 
-To download translation files from Lokalise to GitHub, use the [lokalise-pull-action](https://github.com/lokalise/lokalise-pull-action).
-
-*To find documentation for the **stable version 3**, [browse the v3 tag](https://github.com/lokalise/lokalise-push-action/tree/v3).*
+> To download translation files from Lokalise to GitHub, use the [lokalise-pull-action](https://github.com/lokalise/lokalise-pull-action).
 
 ## Usage
 
@@ -26,7 +26,7 @@ jobs:
 
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -55,11 +55,12 @@ You'll need to provide some parameters for the action. These can be set as envir
 ### Mandatory parameters
 
 - `api_token` — Lokalise API token with read/write permissions.
+  + Keep in mind that the API tokens are created on a per-user basis. If this contributor does not have proper access rights within a project (*Upload files* permission), the uploads will fail.
 - `project_id` — Your Lokalise project ID.
-- `translations_path` — One or more paths to your translations. For example, if your translations are stored in the `locales` folder at the project root, use `locales` (leave out leading and trailing slashes). Defaults to `locales`.
+- `translations_path` (*default: `locales`*) — One or more paths to your translations without leading and trailing slashes. For example, if your translations are stored in the `./locales/` folder at the project root, use `locales`.
 - `file_format` — **⚠️ DEPRECATED**: use `file_ext` instead. *This will be removed in the next major release.* Defines the format of your translation files, such as `json` for JSON files. Defaults to `json`. This format determines how translation files are processed and also influences the file extension used when searching for them. However, some specific formats, such as `json_structured`, still use the generic `.json` extension. If you're using such a format, make sure to set the `file_ext` parameter explicitly to match the correct extension for your files. Alternatively, configure the `name_pattern` parameter.
-- `base_lang` — The base language of your project (e.g., `en` for English). Defaults to `en`.
-- `file_ext` — File extension(s) to use when searching for translation files without leading dot. This parameter has no effect when the `name_pattern` is provided.
+- `base_lang` (*default: `en`*) — The base language of your project (e.g., `en` for English).
+- `file_ext` (*default: `json`*) — File extension(s) to use when searching for translation files without leading dot. This parameter has no effect when the `name_pattern` is provided.
 
 ```yaml
 file_ext: json
@@ -73,13 +74,13 @@ file_ext: |
 
 ### File and API options
 
-- `flat_naming` — Use flat naming convention. Set to `true` if your translation files follow a flat naming pattern like `locales/en.json` instead of `locales/en/file.json`. Defaults to `false`.
-- `name_pattern` — Custom pattern for naming translation files. Overrides default language-based naming. Must include both filename and extension if applicable (e.g., `"custom_name.json"` or `"**/*.yaml"`). Default behavior is used if not set.  
-  + When `name_pattern` is set, the action respects your `translations_path` but does not append language-based folders. For example:  
-    - `"en/**/custom_*.json"` will match nested files for the `en` locale  
-    - `"custom_*.json"` matches files directly under the given path  
+- `flat_naming` (*default: `false`*) — Use flat naming convention. Set to `true` if your translation files follow a flat naming pattern like `locales/en.json` instead of `locales/en/file.json`.
+- `name_pattern` (*default: empty string*) — Custom pattern for naming translation files. Overrides default language-based naming. Must include both filename and extension if applicable (e.g., `"custom_name.json"` or `"**/*.yaml"`). Default behavior is used if not set.
+  + When `name_pattern` is set, the action respects your `translations_path` but does not append language-based folders. For example:
+    - `"en/**/custom_*.json"` will match nested files for the `en` locale
+    - `"custom_*.json"` matches files directly under the given path
   This approach gives you fine-grained control similar to `flat_naming`, but with more flexibility.
-- `additional_params` — Extra parameters to pass to the [Upload file API endpoint](https://developers.lokalise.com/reference/upload-a-file). Must contain valid JSON. Defaults to an empty string. Be careful when setting the `include_path` additional parameter to `false`, as it will mean your keys won't be assigned with any filename upon upload: this might pose a problem if you're planning to utilize the pull action to download translation back. You can include multiple API parameters as needed:
+- `additional_params` (*default: empty*) — Extra parameters to pass to the [Upload file API endpoint](https://developers.lokalise.com/reference/upload-a-file). Must contain valid JSON. Defaults to an empty string. Be careful when setting the `include_path` additional parameter to `false`, as it will mean your keys won't be assigned with any filename upon upload: this might pose a problem if you're planning to utilize the pull action to download translation back. You can include multiple API parameters as needed:
 
 ```yaml
 additional_params: >
@@ -91,31 +92,35 @@ additional_params: >
 
 ### Behavior settings
 
-- `skip_tagging` — Do not assign tags to the uploaded translation keys on Lokalise. Set this to `true` to skip adding tags like inserted, skipped, or updated keys. Defaults to `false`.
-- `skip_polling` — Skips waiting for the upload operation to complete. When set to `true`, the `poll_initial_wait` and `poll_max_wait` parameters are ignored. Defaults to `false`.
-- `skip_default_flags` — Prevents the action from setting additional default flags for the `upload` command. By default, the action includes `replace_modified`, `include_path`, and `distinguish_by_file` set to `true`. When `skip_default_flags` is `true`, these parameters are not added. Defaults to `false`.
-- `rambo_mode` — Always upload all translation files for the base language regardless of changes. Set this to `true` to bypass change detection and force a full upload of all base language translation files. Defaults to `false`.
-- `use_tag_tracking` — Enables branch-specific sync tracking using Git tags. When set to `true`, the action creates a unique tag for each branch to remember the last successfully synced commit. On subsequent runs, it compares the current commit against the tagged commit to detect all changes since the last successful sync — regardless of how many commits occurred in between. This feature is still experimental.
+- `skip_tagging` (*default: `false`*) — Do not assign tags to the uploaded translation keys on Lokalise. Set this to `true` to skip adding tags like inserted, skipped, or updated keys.
+- `skip_polling` (*default: `false`*) — Skips waiting for the upload operation to complete. When set to `true`, the `poll_initial_wait` and `poll_max_wait` parameters are ignored.
+- `skip_default_flags` (*default: `false`*) — Prevents the action from setting additional default flags for the `upload` command. By default, the action includes `replace_modified`, `include_path`, and `distinguish_by_file` set to `true`. When `skip_default_flags` is `true`, these parameters are not added. Defaults to `false`.
+- `rambo_mode` (*default: `false`*) — Always upload all translation files for the base language regardless of changes. Enable to bypass change detection and force a full upload of all base language translation files.
+- `use_tag_tracking` (*default: `false`*) — Enables branch-specific sync tracking using Git tags. When set to `true`, the action creates a unique tag for each branch to remember the last successfully synced commit. On subsequent runs, it compares the current commit against the tagged commit to detect all changes since the last successful sync — regardless of how many commits occurred in between. This feature is still experimental.
   + By default, when `use_tag_tracking` is `false`, the action compares just the last two commits (`HEAD` and `HEAD~1`) to determine what changed. Enabling `use_tag_tracking` allows the action to detect broader changes across multiple commits and ensure nothing gets skipped during uploads.
   + This parameter has no effect if the `rambo_mode` is set to `true`.
 
 ### Retries and timeouts
 
-- `max_retries` — Maximum number of retries on rate limit (HTTP 429) and other retryable errors. Defaults to `3`.
-- `sleep_on_retry` — Number of seconds to sleep before retrying on retryable errors (exponential backoff applies). Defaults to `1`.
-- `upload_timeout` — Timeout for the whole upload operation, in seconds. Defaults to `600`.
-- `poll_initial_wait` — Initial timeout for the upload poll operation, in seconds. Defaults to `1`.
-- `poll_max_wait` — Maximum timeout for the upload poll operation, in seconds. Defaults to `120`.
-- `http_timeout` — Timeout in seconds for every HTTP operation. Defaults to `120`.
+- `max_retries` (*default: `3`*) — Maximum number of retries on rate limit (HTTP 429) and other retryable errors.
+- `sleep_on_retry` (*default: `1`*) — Number of seconds to sleep before retrying on retryable errors (exponential backoff applies).
+- `upload_timeout` (*default: `600`*) — Timeout for the whole upload operation, in seconds.
+- `poll_initial_wait` (*default: `1`*) — Initial timeout for the upload poll operation, in seconds.
+- `poll_max_wait` (*default: `120`*) — Maximum timeout for the upload poll operation, in seconds.
+- `http_timeout` (*default: `120`*) — Timeout in seconds for every HTTP operation.
 
 ### Git configuration
 
-- `git_user_name` — Optional Git username to use when tagging the initial Lokalise upload. If not provided, the action will default to the GitHub actor that triggered the workflow. This is useful if you'd like to show a more descriptive or bot-specific name in your Git history (e.g., "Lokalise Sync Bot").
-- `git_user_email` — Optional Git email to associate with the Git tag for the initial Lokalise upload. If not set, the action will use a noreply address based on the username (e.g., `username@users.noreply.github.com`). Useful for customizing commit/tag authorship or when working in teams with dedicated automation accounts.
+- `git_user_name` (*default: empty string*) — Optional Git username to use when tagging the initial Lokalise upload. If not provided, the action will default to the GitHub actor who triggered the workflow. This is useful if you'd like to show a more descriptive or bot-specific name in your Git history (e.g., "Lokalise Sync Bot").
+- `git_user_email` (*default: empty string*) — Optional Git email to associate with the Git tag for the initial Lokalise upload. If not set, the action will use a noreply address based on the username (e.g., `username@users.noreply.github.com`). Useful for customizing commit/tag authorship or when working in teams with dedicated automation accounts.
 
 ### Platform support
 
-- `os_platform` — Target platform for the precompiled binaries used by this action (`linux_amd64`, `linux_arm64`, `mac_amd64`, `mac_arm64`). These binaries handle tasks like uploading and processing translations. Typically, you don't need to change this, as the default (`linux_amd64`) works for most environments. Override if running on a macOS runner or a different architecture.
+- `os_platform` (*default: `linux_amd64`*) — Target platform for the precompiled binaries used by this action. These binaries handle tasks like uploading and processing translations. Typically, you don't need to change this, as the default works for most environments. Override if running on a macOS runner or a different architecture. Supported values:
+  + `linux_amd64`
+  + `linux_arm64`
+  + `mac_amd64`
+  + `mac_arm64`
 
 ## Technical details
 
