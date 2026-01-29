@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/bodrovis/lokalise-actions-common/v2/parsers"
-	"github.com/bodrovis/lokex/client"
+	"github.com/bodrovis/lokex/v2/client"
 )
 
 // exitFunc is a function variable that defaults to os.Exit.
@@ -49,7 +49,7 @@ type UploadConfig struct {
 
 // Uploader abstracts the upload client for testability.
 type Uploader interface {
-	Upload(ctx context.Context, params client.UploadParams, poll bool) (string, error)
+	Upload(ctx context.Context, params client.UploadParams, srcPath string, poll bool) (string, error)
 }
 
 // ClientFactory allows injecting a fake client in tests.
@@ -108,7 +108,7 @@ func validate(config UploadConfig) {
 	if config.LangISO == "" {
 		returnWithError("Base language (BASE_LANG) is required and cannot be empty.")
 	}
-	if config.GitHubRefName == "" {
+	if !config.SkipTagging && config.GitHubRefName == "" {
 		returnWithError("GitHub reference name (GITHUB_REF_NAME) is required and cannot be empty.")
 	}
 }
@@ -181,7 +181,7 @@ func uploadFile(ctx context.Context, cfg UploadConfig, factory ClientFactory) er
 
 	fmt.Printf("Starting to upload file %s\n", cfg.FilePath)
 
-	if _, err := uploader.Upload(ctx, params, !cfg.SkipPolling); err != nil {
+	if _, err := uploader.Upload(ctx, params, "", !cfg.SkipPolling); err != nil {
 		return fmt.Errorf("failed to upload file %s: %w", cfg.FilePath, err)
 	}
 

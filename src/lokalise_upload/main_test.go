@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bodrovis/lokex/client"
+	"github.com/bodrovis/lokex/v2/client"
 )
 
 func TestMain(m *testing.M) {
@@ -415,7 +415,7 @@ type fakeUploader struct {
 	returnErr error
 }
 
-func (f *fakeUploader) Upload(ctx context.Context, params client.UploadParams, poll bool) (string, error) {
+func (f *fakeUploader) Upload(ctx context.Context, params client.UploadParams, srcPath string, poll bool) (string, error) {
 	f.called = true
 	f.gotCtx = ctx
 	f.gotParams = params

@@ -137,9 +137,14 @@ func findAllTranslationFiles(paths []string, flatNaming bool, baseLang string, f
 			pattern := filepath.ToSlash(filepath.Join(path, namePattern))
 			pattern = strings.TrimPrefix(pattern, "./") // doublestar on DirFS(".") wants relative pattern
 
-			matches, err := doublestar.Glob(os.DirFS("."), pattern)
+			globOpts := []doublestar.GlobOption{
+				doublestar.WithFilesOnly(),
+				doublestar.WithFailOnIOErrors(),
+			}
+
+			matches, err := doublestar.Glob(os.DirFS("."), pattern, globOpts...)
 			if err != nil {
-				return nil, fmt.Errorf("error applying name pattern %s: %v", pattern, err)
+				return nil, fmt.Errorf("apply name pattern %q: %w", pattern, err)
 			}
 
 			for _, m := range matches {
