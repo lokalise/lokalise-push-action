@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"maps"
 	"os"
 	"strings"
 	"time"
@@ -211,25 +209,11 @@ func buildUploadParams(config UploadConfig) client.UploadParams {
 		params["tags"] = []string{config.GitHubRefName}
 	}
 
-	// Merge arbitrary extra params from JSON (caller-controlled).
-	ap := strings.TrimSpace(config.AdditionalParams)
-	if ap != "" {
-		add, err := parseJSONMap(ap)
-		if err != nil {
-			returnWithError("Invalid additional_params (must be JSON object): " + err.Error())
-		}
-		maps.Copy(params, add) // last write wins
+	if err := parsers.ParseAdditionalParamsAndMerge(params, config.AdditionalParams); err != nil {
+		returnWithError("Invalid additional_params (must be JSON object or YAML mapping): " + err.Error())
 	}
 
 	return params
-}
-
-func parseJSONMap(s string) (map[string]any, error) {
-	var m map[string]any
-	if err := json.Unmarshal([]byte(s), &m); err != nil {
-		return nil, err
-	}
-	return m, nil
 }
 
 // returnWithError prints an error message to stderr and exits the program with a non-zero status code.

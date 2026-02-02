@@ -80,7 +80,7 @@ file_ext: |
     - `"en/**/custom_*.json"` will match nested files for the `en` locale
     - `"custom_*.json"` matches files directly under the given path
   This approach gives you fine-grained control similar to `flat_naming`, but with more flexibility.
-- `additional_params` (*default: empty*) — Extra parameters to pass to the [Upload file API endpoint](https://developers.lokalise.com/reference/upload-a-file). Must contain valid JSON. Defaults to an empty string. Be careful when setting the `include_path` additional parameter to `false`, as it will mean your keys won't be assigned with any filename upon upload: this might pose a problem if you're planning to utilize the pull action to download translation back. You can include multiple API parameters as needed:
+- `additional_params` (*default: empty*) — Extra parameters to pass to the [Upload file API endpoint](https://developers.lokalise.com/reference/upload-a-file). Must contain valid JSON or YAML. Defaults to an empty string. Be careful when setting the `include_path` additional parameter to `false`, as it will mean your keys won't be assigned with any filename upon upload: this might pose a problem if you're planning to utilize the pull action to download translation back. You can include multiple API parameters as needed:
 
 ```yaml
 additional_params: >
@@ -88,6 +88,12 @@ additional_params: >
     "convert_placeholders": true,
     "hidden_from_contributors": true
   }
+
+# OR
+
+additional_params: |
+  convert_placeholders: true
+  hidden_from_contributors: true
 ```
 
 ### Behavior settings

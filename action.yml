@@ -25,7 +25,7 @@ inputs:
     required: false
     default: 'json'
   additional_params:
-    description: 'Additional parameters for Lokalise API on push. Find all supported options at https://developers.lokalise.com/reference/upload-a-file'
+    description: 'Additional parameters for Lokalise API on push. Must be valid JSON or YAML. Find all supported options at https://developers.lokalise.com/reference/upload-a-file'
     required: false
     default: ''
   flat_naming:
