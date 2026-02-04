@@ -410,7 +410,13 @@ runs:
         if [ "${{ steps.push-translation-files.outputs.files_uploaded }}" != "true" ]; then
           echo "Nothing has been uploaded."
           echo "files_uploaded=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if [ "${{ inputs.skip_polling }}" = "true" ]; then
+          echo "File upload process accepted by Lokalise. Polling disabled. Verify in project activity if file(s) have been imported successfully."
         else
           echo "Files have been uploaded."
-          echo "files_uploaded=true" >> "$GITHUB_OUTPUT"
         fi
+
+        echo "files_uploaded=true" >> "$GITHUB_OUTPUT"
