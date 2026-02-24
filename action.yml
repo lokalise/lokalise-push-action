@@ -168,7 +168,7 @@ runs:
         FILE_FORMAT: "${{ inputs.file_format }}"
         FILE_EXT: "${{ inputs.file_ext }}"
         NAME_PATTERN: "${{ inputs.name_pattern }}"
-        PLATFORM: "${{ steps.detect-platform.outputs.platform  }}"
+        PLATFORM: "${{ steps.detect-platform.outputs.platform }}"
       run: |
         set -euo pipefail
 
@@ -299,7 +299,7 @@ runs:
         FILE_EXT: "${{ inputs.file_ext }}"
         FLAT_NAMING: "${{ inputs.flat_naming }}"
         NAME_PATTERN: "${{ inputs.name_pattern }}"
-        PLATFORM: "${{ steps.detect-platform.outputs.platform  }}"
+        PLATFORM: "${{ steps.detect-platform.outputs.platform }}"
       run: |
         set -euo pipefail
 
@@ -353,7 +353,7 @@ runs:
         POLL_INITIAL_WAIT: "${{ inputs.poll_initial_wait }}"
         POLL_MAX_WAIT: "${{ inputs.poll_max_wait }}"
         SKIP_DEFAULT_FLAGS: "${{ inputs.skip_default_flags }}"
-        PLATFORM: "${{ steps.detect-platform.outputs.platform  }}"
+        PLATFORM: "${{ steps.detect-platform.outputs.platform }}"
       run: |
         set -euo pipefail
 
