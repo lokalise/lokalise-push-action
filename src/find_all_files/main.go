@@ -44,7 +44,7 @@ func main() {
 	processAllFiles(allFiles, githuboutput.WriteToGitHubOutput)
 }
 
-// validateEnvironment enforces presence of required inputs and performs simple inference (FILE_EXT ← FILE_FORMAT).
+// validateEnvironment enforces presence of required inputs.
 func validateEnvironment() ([]string, string, []string, string) {
 	paths, err := parsers.ParseRepoRelativePathsEnv("TRANSLATIONS_PATH")
 	if err != nil {
@@ -67,12 +67,7 @@ func validateEnvironment() ([]string, string, []string, string) {
 
 	exts := parsers.ParseStringArrayEnv("FILE_EXT")
 	if len(exts) == 0 {
-		if v := os.Getenv("FILE_FORMAT"); v != "" {
-			exts = []string{v}
-		}
-	}
-	if len(exts) == 0 {
-		returnWithError("Cannot infer file extension. Make sure FILE_FORMAT or FILE_EXT environment variables are set")
+		returnWithError("Cannot infer file extension. Make sure FILE_EXT environment variable is set")
 	}
 
 	// normalize + dedupe

@@ -75,12 +75,7 @@ func validateEnvironment() ([]string, string, []string, string) {
 	// Support single or multiple FILE_EXT values (newline-separated).
 	exts := parsers.ParseStringArrayEnv("FILE_EXT")
 	if len(exts) == 0 {
-		if v := os.Getenv("FILE_FORMAT"); v != "" {
-			exts = []string{v}
-		}
-	}
-	if len(exts) == 0 {
-		returnWithError("Cannot infer file extension. Make sure FILE_FORMAT or FILE_EXT environment variables are set")
+		returnWithError("Cannot infer file extension. Make sure FILE_EXT environment variable is set")
 	}
 
 	// normalize + dedupe (lowercase, trim, drop leading dot)

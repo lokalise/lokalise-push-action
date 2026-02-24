@@ -243,7 +243,7 @@ func TestValidateEnvironment(t *testing.T) {
 	t.Run("Valid environment variables", func(t *testing.T) {
 		t.Setenv("TRANSLATIONS_PATH", "\npath1\npath2\n\n")
 		t.Setenv("BASE_LANG", "en")
-		t.Setenv("FILE_FORMAT", "json")
+		t.Setenv("FILE_EXT", "json")
 		t.Setenv("NAME_PATTERN", "custom_name.json")
 
 		paths, baseLang, fileExt, namePattern := validateEnvironment()
@@ -263,25 +263,9 @@ func TestValidateEnvironment(t *testing.T) {
 		}
 	})
 
-	t.Run("FILE_EXT has precedence over FILE_FORMAT", func(t *testing.T) {
-		t.Setenv("TRANSLATIONS_PATH", "\npath1\npath2\n\n")
-		t.Setenv("BASE_LANG", "en")
-		t.Setenv("FILE_FORMAT", "json_structured")
-		t.Setenv("FILE_EXT", "json\nyaml")
-		t.Setenv("NAME_PATTERN", "custom_name.json")
-
-		_, _, fileExt, _ := validateEnvironment()
-
-		want := []string{"json", "yaml"}
-		if !reflect.DeepEqual(fileExt, want) {
-			t.Errorf("fileExt mismatch. want=%v got=%v", want, fileExt)
-		}
-	})
-
 	t.Run("Missing environment variables", func(t *testing.T) {
 		t.Setenv("TRANSLATIONS_PATH", "")
 		t.Setenv("BASE_LANG", "")
-		t.Setenv("FILE_FORMAT", "")
 		t.Setenv("FILE_EXT", "")
 		t.Setenv("NAME_PATTERN", "")
 

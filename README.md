@@ -57,7 +57,6 @@ You'll need to provide some parameters for the action. These can be set as envir
   + Keep in mind that the API tokens are created on a per-user basis. If this contributor does not have proper access rights within a project (*Upload files* permission), the uploads will fail.
 - `project_id` — Your Lokalise project ID.
 - `translations_path` (*default: `locales`*) — One or more paths to your translations without leading and trailing slashes. For example, if your translations are stored in the `./locales/` folder at the project root, use `locales`.
-- `file_format` — **⚠️ DEPRECATED**: use `file_ext` instead. *This will be removed in the next major release.* Defines the format of your translation files, such as `json` for JSON files. Defaults to `json`. This format determines how translation files are processed and also influences the file extension used when searching for them. However, some specific formats, such as `json_structured`, still use the generic `.json` extension. If you're using such a format, make sure to set the `file_ext` parameter explicitly to match the correct extension for your files. Alternatively, configure the `name_pattern` parameter.
 - `base_lang` (*default: `en`*) — The base language of your project (e.g., `en` for English).
 - `file_ext` (*default: `json`*) — File extension(s) to use when searching for translation files without leading dot. This parameter has no effect when the `name_pattern` is provided.
 
