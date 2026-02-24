@@ -18,7 +18,7 @@ inputs:
     default: |
       locales
   file_ext:
-    description: 'Custom file extension(s) to use when searching for translation files (without leading dot). Accepts either a single value (e.g. "json") or multiple newline-separated values. This parameter has no effect when the name_pattern is provided.
+    description: 'Custom file extension(s) to use when searching for translation files (without leading dot). Accepts either a single value (e.g. "json") or multiple newline-separated values. This parameter has no effect when the name_pattern is provided.'
     required: false
     default: 'json'
   additional_params:
