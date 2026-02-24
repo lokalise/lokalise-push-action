@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -331,13 +332,7 @@ func TestStoreTranslationPaths(t *testing.T) {
 			expected := normalizeLines(tt.expected)
 
 			for _, expectedLine := range expected {
-				found := false
-				for _, line := range lines {
-					if line == expectedLine {
-						found = true
-						break
-					}
-				}
+				found := slices.Contains(lines, expectedLine)
 				if !found {
 					t.Errorf("missing expected line: %s", expectedLine)
 				}

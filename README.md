@@ -1,6 +1,7 @@
 # GitHub action to push changed translation files to Lokalise
 
 ![GitHub Release](https://img.shields.io/github/v/release/lokalise/lokalise-push-action)
+![CI](https://github.com/lokalise/lokalise-push-action/actions/workflows/ci.yml/badge.svg)
 
 GitHub action to upload changed translation files in the base language from your GitHub repository to [Lokalise TMS](https://lokalise.com/).
 
@@ -31,7 +32,7 @@ jobs:
           fetch-depth: 0
 
       - name: Push to Lokalise
-        uses: lokalise/lokalise-push-action@v4.3.0
+        uses: lokalise/lokalise-push-action@v5.0.0
         with:
           api_token: ${{ secrets.LOKALISE_API_TOKEN }}
           project_id: LOKALISE_PROJECT_ID
@@ -122,11 +123,11 @@ additional_params: |
 
 ### Platform support
 
-- `os_platform` (*default: `linux_amd64`*) — Target platform for the precompiled binaries used by this action. These binaries handle tasks like uploading and processing translations. Typically, you don't need to change this, as the default works for most environments. Override if running on a macOS runner or a different architecture. Supported values:
-  + `linux_amd64`
-  + `linux_arm64`
-  + `mac_amd64`
-  + `mac_arm64`
+- `os_platform` (*default: empty — auto-detected*) — Platform for the precompiled binaries used by this action. If not set, the action automatically determines the correct platform based on the GitHub runner. You only need to set this manually when using unusual or self-hosted runners. In all other cases, auto-detection should work. Supported values:
+  - `linux_amd64`
+  - `linux_arm64`
+  - `mac_amd64`
+  - `mac_arm64`
 
 ## Technical details
 

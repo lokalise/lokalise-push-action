@@ -77,9 +77,9 @@ inputs:
     required: false
     default: '120'
   os_platform:
-    description: 'Target platform for the binary (linux_amd64, linux_arm64, mac_amd64, mac_arm64)'
+    description: 'Target platform for the binary (linux_amd64, linux_arm64, mac_amd64, mac_arm64). If not set, the action will auto-detect based on the runner.'
     required: false
-    default: 'linux_amd64'
+    default: ''
   git_user_name:
     description: 'Optional Git username to use when tagging the initial Lokalise upload. Defaults to GitHub actor.'
     required: false
@@ -107,6 +107,57 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - name: Detect platform
+      id: detect-platform
+      shell: bash
+      env:
+        OS_PLATFORM: "${{ inputs.os_platform }}"
+      run: |
+        set -euo pipefail
+
+        # Normalize user-provided os_platform: trim, drop spaces, lowercase
+        OS_PLATFORM="$(printf '%s' "${OS_PLATFORM:-}" \
+          | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/[[:space:]]//g' \
+          | tr '[:upper:]' '[:lower:]')"
+
+        validate_platform() {
+          case "$1" in
+            linux_amd64|linux_arm64|mac_amd64|mac_arm64) return 0 ;;
+            *) return 1 ;;
+          esac
+        }
+
+        if [[ -n "$OS_PLATFORM" ]]; then
+          if ! validate_platform "$OS_PLATFORM"; then
+            echo "Error: unsupported 'os_platform' input: '$OS_PLATFORM'"
+            echo "Supported values: linux_amd64, linux_arm64, mac_amd64, mac_arm64"
+            exit 1
+          fi
+          echo "Using user-provided platform: $OS_PLATFORM"
+          PLATFORM="$OS_PLATFORM"
+        else
+          # Auto-detect from runner, but normalize to lowercase and tolerate x64/amd64 variants
+          runner_os="$(printf '%s' "${RUNNER_OS:-}" | tr '[:upper:]' '[:lower:]')"
+          runner_arch="$(printf '%s' "${RUNNER_ARCH:-}" | tr '[:upper:]' '[:lower:]')"
+
+          echo "Auto-detecting platform from runner: OS=${runner_os} ARCH=${runner_arch}"
+
+          case "${runner_os}/${runner_arch}" in
+            linux/x64|linux/amd64) PLATFORM="linux_amd64" ;;
+            linux/arm64)           PLATFORM="linux_arm64" ;;
+            macos/x64|macos/amd64) PLATFORM="mac_amd64" ;;
+            macos/arm64)           PLATFORM="mac_arm64" ;;
+            *)
+              echo "Error: unsupported runner platform: ${RUNNER_OS:-}/${RUNNER_ARCH:-}"
+              echo "Please set 'os_platform' input explicitly to one of: linux_amd64, linux_arm64, mac_amd64, mac_arm64"
+              exit 1
+              ;;
+          esac
+        fi
+
+        echo "Detected platform: $PLATFORM"
+        echo "platform=$PLATFORM" >> "$GITHUB_OUTPUT"
+        
     - name: Set translation paths
       id: translation-paths
       shell: bash
@@ -117,7 +168,7 @@ runs:
         FILE_FORMAT: "${{ inputs.file_format }}"
         FILE_EXT: "${{ inputs.file_ext }}"
         NAME_PATTERN: "${{ inputs.name_pattern }}"
-        PLATFORM: "${{ inputs.os_platform }}"
+        PLATFORM: "${{ steps.detect-platform.outputs.platform }}"
       run: |
         set -euo pipefail
 
@@ -198,8 +249,8 @@ runs:
     - name: Get changed files
       if: inputs.rambo_mode != 'true' && (inputs.use_tag_tracking != 'true' || steps.check-sha.outputs.identical != 'true')
       id: changed-files
-      # tj-actions/changed-files@v47.0.1
-      uses: tj-actions/changed-files@e0021407031f5be11a464abee9a0776171c79891
+      # tj-actions/changed-files@v47.0.4
+      uses: tj-actions/changed-files@7dee1b0c1557f278e5c7dc244927139d78c0e22a
       with:
         files_from_source_file: lok_action_paths_temp.txt
         separator: ','
@@ -248,7 +299,7 @@ runs:
         FILE_EXT: "${{ inputs.file_ext }}"
         FLAT_NAMING: "${{ inputs.flat_naming }}"
         NAME_PATTERN: "${{ inputs.name_pattern }}"
-        PLATFORM: "${{ inputs.os_platform }}"
+        PLATFORM: "${{ steps.detect-platform.outputs.platform }}"
       run: |
         set -euo pipefail
 
@@ -302,7 +353,7 @@ runs:
         POLL_INITIAL_WAIT: "${{ inputs.poll_initial_wait }}"
         POLL_MAX_WAIT: "${{ inputs.poll_max_wait }}"
         SKIP_DEFAULT_FLAGS: "${{ inputs.skip_default_flags }}"
-        PLATFORM: "${{ inputs.os_platform }}"
+        PLATFORM: "${{ steps.detect-platform.outputs.platform }}"
       run: |
         set -euo pipefail
 
