@@ -5,8 +5,6 @@
 
 GitHub action to upload changed translation files in the base language from your GitHub repository to [Lokalise TMS](https://lokalise.com/).
 
-*To find documentation for the **stable version 3**, [browse the v3 tag](https://github.com/lokalise/lokalise-push-action/tree/v3).*
-
 * Step-by-step tutorial covering the usage of this action is available on [Lokalise Developer Hub](https://developers.lokalise.com/docs/github-actions).
 * If you're looking for an in-depth tutorial, [check out our blog post](https://lokalise.com/blog/github-actions-for-lokalise-translation/)
 
