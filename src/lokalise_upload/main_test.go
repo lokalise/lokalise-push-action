@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bodrovis/lokex/v2/client"
+	"github.com/bodrovis/lokex/v2/client/upload"
 )
 
 func TestMain(m *testing.M) {
@@ -111,7 +111,7 @@ func TestBuildUploadParams_MergesAndDefaults(t *testing.T) {
 
 	p := buildUploadParams(cfg)
 
-	want := client.UploadParams{
+	want := upload.UploadParams{
 		"filename":             "/tmp/en.json",
 		"lang_iso":             "en",
 		"replace_modified":     true,
@@ -408,14 +408,14 @@ func TestValidate_ExitsOnMissingFields(t *testing.T) {
 type fakeUploader struct {
 	called    bool
 	gotCtx    context.Context
-	gotParams client.UploadParams
+	gotParams upload.UploadParams
 	gotPoll   bool
 
 	returnPID string
 	returnErr error
 }
 
-func (f *fakeUploader) Upload(ctx context.Context, params client.UploadParams, srcPath string, poll bool) (string, error) {
+func (f *fakeUploader) Upload(ctx context.Context, params upload.UploadParams, srcPath string, poll bool) (string, error) {
 	f.called = true
 	f.gotCtx = ctx
 	f.gotParams = params

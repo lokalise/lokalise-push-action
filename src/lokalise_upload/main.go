@@ -9,6 +9,7 @@ import (
 
 	"github.com/bodrovis/lokalise-actions-common/v2/parsers"
 	"github.com/bodrovis/lokex/v2/client"
+	"github.com/bodrovis/lokex/v2/client/upload"
 )
 
 // exitFunc is a function variable that defaults to os.Exit.
@@ -47,7 +48,7 @@ type UploadConfig struct {
 
 // Uploader abstracts the upload client for testability.
 type Uploader interface {
-	Upload(ctx context.Context, params client.UploadParams, srcPath string, poll bool) (string, error)
+	Upload(ctx context.Context, params upload.UploadParams, srcPath string, poll bool) (string, error)
 }
 
 // ClientFactory allows injecting a fake client in tests.
@@ -71,7 +72,7 @@ func (f *LokaliseFactory) NewUploader(cfg UploadConfig) (Uploader, error) {
 	if err != nil {
 		return nil, err
 	}
-	return client.NewUploader(lokaliseClient), nil
+	return upload.NewUploader(lokaliseClient), nil
 }
 
 func main() {
@@ -188,8 +189,8 @@ func uploadFile(ctx context.Context, cfg UploadConfig, factory ClientFactory) er
 
 // buildUploadParams assembles the payload for the Lokalise upload endpoint.
 // AdditionalParams (JSON) are merged last and can override defaults if needed.
-func buildUploadParams(config UploadConfig) client.UploadParams {
-	params := client.UploadParams{
+func buildUploadParams(config UploadConfig) upload.UploadParams {
+	params := upload.UploadParams{
 		"filename": config.FilePath,
 		"lang_iso": config.LangISO,
 	}
