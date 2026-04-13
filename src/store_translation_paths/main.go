@@ -30,16 +30,8 @@ func main() {
 
 	// We persist the generated pathspecs to a file that is later consumed by
 	// tj-actions/changed-files via `files_from_source_file`.
-	file, err := os.Create("lok_action_paths_temp.txt")
-	if err != nil {
-		returnWithError(fmt.Sprintf("cannot create output file: %v", err))
-	}
-	defer func() {
-		if cerr := file.Close(); cerr != nil {
-			// Non-fatal warning; the action will likely still succeed if writes completed.
-			fmt.Fprintf(os.Stderr, "Warning: failed to close file properly: %v\n", cerr)
-		}
-	}()
+	file := createOutputFile()
+	defer closeOutputFile(file)
 
 	// Emit one pathspec per line. Consumers expect newline-separated patterns.
 	// Each line can be a direct file path or a glob (git pathspec-style).
@@ -61,42 +53,73 @@ func validateEnvironment() ([]string, string, []string, string) {
 		returnWithError("BASE_LANG is not set or is empty")
 	}
 
-	namePattern := os.Getenv("NAME_PATTERN")
+	namePattern := normalizeNamePattern(os.Getenv("NAME_PATTERN"))
+	fileExts := normalizeFileExtensions(parsers.ParseStringArrayEnv("FILE_EXT"))
 
-	if namePattern != "" {
-		// forbid absolute / escaping
-		if np, err := ensureRepoRelative(namePattern); err != nil {
-			returnWithError(fmt.Sprintf("invalid NAME_PATTERN %q: %v", namePattern, err))
-		} else {
-			namePattern = np
-		}
+	return paths, baseLang, fileExts, namePattern
+}
+
+// normalizeNamePattern validates an optional custom pattern and keeps it repo-relative.
+// Empty input is allowed and returned as-is.
+func normalizeNamePattern(pattern string) string {
+	if pattern == "" {
+		return ""
 	}
 
-	// Support single or multiple FILE_EXT values (newline-separated).
-	exts := parsers.ParseStringArrayEnv("FILE_EXT")
+	// Forbid absolute paths and path traversal outside the repo root.
+	normalized, err := ensureRepoRelative(pattern)
+	if err != nil {
+		returnWithError(fmt.Sprintf("invalid NAME_PATTERN %q: %v", pattern, err))
+	}
+
+	return normalized
+}
+
+// normalizeFileExtensions supports single or multiple FILE_EXT values,
+// normalizes them, and removes duplicates while preserving behavior.
+func normalizeFileExtensions(exts []string) []string {
 	if len(exts) == 0 {
 		returnWithError("Cannot infer file extension. Make sure FILE_EXT environment variable is set")
 	}
 
-	// normalize + dedupe (lowercase, trim, drop leading dot)
 	seen := make(map[string]struct{}, len(exts))
-	norm := make([]string, 0, len(exts))
-	for _, e := range exts {
-		e = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(e, ".")))
-		if e == "" {
+	normalized := make([]string, 0, len(exts))
+
+	for _, ext := range exts {
+		ext = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(ext, ".")))
+		if ext == "" {
 			continue
 		}
-		if _, ok := seen[e]; ok {
+		if _, ok := seen[ext]; ok {
 			continue
 		}
-		seen[e] = struct{}{}
-		norm = append(norm, e)
+		seen[ext] = struct{}{}
+		normalized = append(normalized, ext)
 	}
-	if len(norm) == 0 {
+
+	if len(normalized) == 0 {
 		returnWithError("no valid file extensions after normalization")
 	}
 
-	return paths, baseLang, norm, namePattern
+	return normalized
+}
+
+// createOutputFile creates the temp file consumed later by changed-files.
+func createOutputFile() *os.File {
+	file, err := os.Create("lok_action_paths_temp.txt")
+	if err != nil {
+		returnWithError(fmt.Sprintf("cannot create output file: %v", err))
+	}
+
+	return file
+}
+
+// closeOutputFile closes the output file and prints a warning on failure.
+// This warning is non-fatal because the file may have already been written successfully.
+func closeOutputFile(file *os.File) {
+	if cerr := file.Close(); cerr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to close file properly: %v\n", cerr)
+	}
 }
 
 // storeTranslationPaths emits one pathspec per root and (if applicable) per extension.
@@ -109,50 +132,29 @@ func validateEnvironment() ([]string, string, []string, string) {
 func storeTranslationPaths(paths []string, flatNaming bool, baseLang string, fileExts []string, namePattern string, writer io.Writer) error {
 	seen := make(map[string]struct{}) // avoid duplicates across roots/exts
 
-	writeLine := func(p string) error {
-		// Normalize to forward slashes for cross-platform consistency and
-		// anchor to repo root with a leading "./" (helps avoid CWD surprises).
-		line := filepath.ToSlash(filepath.Join(".", p))
-		if _, ok := seen[line]; ok {
-			return nil
-		}
-		seen[line] = struct{}{}
-		if _, err := writer.Write([]byte(line + "\n")); err != nil {
-			return err
-		}
-		return nil
-	}
+	// Sort once to keep output deterministic across runs.
+	exts := append([]string(nil), fileExts...)
+	sort.Strings(exts)
 
 	for _, root := range paths {
 		if namePattern != "" {
 			// Custom pattern takes precedence; caller is responsible for including
 			// filename/ext or globs. We don't expand it per-extension.
-			if err := writeLine(filepath.Join(root, namePattern)); err != nil {
+			if err := writeUniqueLine(writer, seen, filepath.Join(root, namePattern)); err != nil {
 				return err
 			}
 			continue
 		}
 
 		// Generate per-extension patterns based on layout.
-		exts := append([]string(nil), fileExts...)
-		sort.Strings(exts)
-
 		for _, ext := range exts {
 			ext = strings.TrimSpace(ext)
 			if ext == "" {
 				continue
 			}
 
-			var pat string
-			if flatNaming {
-				// <root>/<baseLang>.<ext>
-				pat = filepath.Join(root, fmt.Sprintf("%s.%s", baseLang, ext))
-			} else {
-				// <root>/<baseLang>/**/*.ext
-				pat = filepath.Join(root, baseLang, "**", fmt.Sprintf("*.%s", ext))
-			}
-
-			if err := writeLine(pat); err != nil {
+			pattern := buildTranslationPattern(root, flatNaming, baseLang, ext)
+			if err := writeUniqueLine(writer, seen, pattern); err != nil {
 				return err
 			}
 		}
@@ -161,6 +163,34 @@ func storeTranslationPaths(paths []string, flatNaming bool, baseLang string, fil
 	return nil
 }
 
+// buildTranslationPattern builds the pathspec for a single root/extension pair.
+func buildTranslationPattern(root string, flatNaming bool, baseLang, ext string) string {
+	if flatNaming {
+		// <root>/<baseLang>.<ext>
+		return filepath.Join(root, fmt.Sprintf("%s.%s", baseLang, ext))
+	}
+
+	// <root>/<baseLang>/**/*.ext
+	return filepath.Join(root, baseLang, "**", fmt.Sprintf("*.%s", ext))
+}
+
+// writeUniqueLine writes a normalized newline-terminated pathspec once.
+func writeUniqueLine(writer io.Writer, seen map[string]struct{}, path string) error {
+	// Normalize to forward slashes for cross-platform consistency and
+	// anchor to repo root with a leading "./" (helps avoid CWD surprises).
+	line := filepath.ToSlash(filepath.Join(".", path))
+
+	if _, ok := seen[line]; ok {
+		return nil
+	}
+	seen[line] = struct{}{}
+
+	_, err := writer.Write([]byte(line + "\n"))
+	return err
+}
+
+// ensureRepoRelative validates that the path is relative to the repo root
+// and does not escape it via absolute paths or parent traversal.
 func ensureRepoRelative(p string) (string, error) {
 	p = strings.TrimSpace(p)
 	if p == "" {
