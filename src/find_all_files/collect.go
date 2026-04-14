@@ -68,19 +68,32 @@ func collectFilesByPattern(root, namePattern string, add func(string)) error {
 //
 // Missing files are ignored. Unexpected stat errors are returned.
 func collectFlatFiles(root, baseLang string, fileExts []string, add func(string)) error {
-	for _, ext := range fileExts {
-		target := filepath.Join(root, fmt.Sprintf("%s.%s", baseLang, ext))
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("error reading directory %s: %w", root, err)
+	}
 
-		info, err := os.Stat(target)
-		if err == nil {
-			if !info.IsDir() {
-				add(target)
-			}
+	for _, entry := range entries {
+		if entry.IsDir() {
 			continue
 		}
 
-		if !os.IsNotExist(err) {
-			return fmt.Errorf("error accessing file %s: %w", target, err)
+		name := entry.Name()
+		ext := filepath.Ext(name)
+		if ext == "" {
+			continue
+		}
+
+		base := strings.TrimSuffix(name, ext)
+		if base != baseLang {
+			continue
+		}
+
+		if hasMatchingExtension(name, fileExts) {
+			add(filepath.Join(root, name))
 		}
 	}
 

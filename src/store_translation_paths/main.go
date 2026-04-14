@@ -17,7 +17,6 @@ func main() {
 	// We persist the generated pathspecs to a file that is later consumed by
 	// tj-actions/changed-files via `files_from_source_file`.
 	file := createOutputFile()
-	defer closeOutputFile(file)
 
 	// Emit one pathspec per line. Consumers expect newline-separated patterns.
 	// Each line can be a direct file path or a glob (git pathspec-style).
@@ -30,8 +29,11 @@ func main() {
 		cfg.NamePattern,
 		file,
 	); err != nil {
+		closeOutputFile(file)
 		returnWithError(fmt.Sprintf("cannot store translation paths: %v", err))
 	}
+
+	closeOutputFile(file)
 }
 
 // returnWithError prints an error and exits non-zero.

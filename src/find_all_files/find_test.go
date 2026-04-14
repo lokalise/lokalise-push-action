@@ -255,6 +255,8 @@ func TestFindAllTranslationFiles_ReturnsSortedOutput(t *testing.T) {
 		filepath.Join(baseTestDir, "flat/translations/en.yaml"),
 	})
 
+	slices.Sort(want)
+
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("expected sorted files %v, got %v", want, got)
 	}
