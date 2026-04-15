@@ -45,8 +45,6 @@ func TestMain(m *testing.M) {
 		log.Printf("Failed to remove %s: %v", baseTestDir, err)
 	}
 
-	// Restore exitFunc after testing.
-	exitFunc = os.Exit
 	os.Exit(code)
 }
 

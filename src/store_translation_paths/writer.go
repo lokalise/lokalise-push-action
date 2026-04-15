@@ -14,9 +14,11 @@ func writeUniqueLine(writer io.Writer, seen map[string]struct{}, path string) er
 	if _, ok := seen[line]; ok {
 		return nil
 	}
-	seen[line] = struct{}{}
 
 	_, err := writer.Write([]byte(line + "\n"))
+
+	seen[line] = struct{}{}
+
 	return err
 }
 

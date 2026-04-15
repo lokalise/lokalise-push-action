@@ -53,17 +53,13 @@ func validateEnvironment() (config, error) {
 }
 
 func parseNamePattern() (string, error) {
-	namePattern, err := normalizers.NormalizeOptionalNamePattern(os.Getenv("NAME_PATTERN"))
-	if err != nil {
-		return "", err
-	}
-	return namePattern, nil
+	return normalizers.NormalizeOptionalNamePattern(os.Getenv("NAME_PATTERN"))
 }
 
 func parseFlatNaming() (bool, error) {
 	flatNaming, err := parsers.ParseBoolEnv("FLAT_NAMING")
 	if err != nil {
-		return false, fmt.Errorf("invalid FLAT_NAMING: expected true or false")
+		return false, fmt.Errorf("invalid FLAT_NAMING: expected true or false: %w", err)
 	}
 	return flatNaming, nil
 }
