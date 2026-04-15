@@ -8,10 +8,7 @@ import (
 )
 
 // writeUniqueLine writes a normalized newline-terminated pathspec once.
-// The resulting line is anchored with "./" and uses forward slashes.
 func writeUniqueLine(writer io.Writer, seen map[string]struct{}, path string) error {
-	// Normalize to forward slashes for cross-platform consistency and
-	// anchor to repo root with a leading "./" (helps avoid CWD surprises).
 	line := filepath.ToSlash(filepath.Join(".", path))
 
 	if _, ok := seen[line]; ok {
@@ -24,13 +21,13 @@ func writeUniqueLine(writer io.Writer, seen map[string]struct{}, path string) er
 }
 
 // createOutputFile creates the temp file consumed later by changed-files.
-func createOutputFile() *os.File {
+func createOutputFile() (*os.File, error) {
 	file, err := os.Create("lok_action_paths_temp.txt")
 	if err != nil {
-		returnWithError(fmt.Sprintf("cannot create output file: %v", err))
+		return nil, fmt.Errorf("cannot create output file: %w", err)
 	}
 
-	return file
+	return file, nil
 }
 
 // closeOutputFile closes the output file and prints a warning on failure.

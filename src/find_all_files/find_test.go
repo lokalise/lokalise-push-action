@@ -242,6 +242,8 @@ func TestFindAllTranslationFiles(t *testing.T) {
 }
 
 func TestFindAllTranslationFiles_ReturnsSortedOutput(t *testing.T) {
+	t.Parallel()
+
 	paths := []string{filepath.Join(baseTestDir, "flat/translations")}
 
 	got, err := findAllTranslationFiles(paths, true, "en", []string{"yaml", "json"}, "")

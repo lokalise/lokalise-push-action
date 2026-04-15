@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -12,33 +13,45 @@ func TestValidateFile(t *testing.T) {
 	missingFile := filepath.Join(t.TempDir(), "missing.json")
 
 	tests := []struct {
-		name      string
-		path      string
-		wantPanic bool
+		name    string
+		path    string
+		wantErr string
 	}{
 		{
 			name: "regular file is accepted",
 			path: tmpFile,
 		},
 		{
-			name:      "missing file exits",
-			path:      missingFile,
-			wantPanic: true,
+			name:    "missing file returns error",
+			path:    missingFile,
+			wantErr: "does not exist",
 		},
 		{
-			name:      "directory exits",
-			path:      tmpDir,
-			wantPanic: true,
+			name:    "directory returns error",
+			path:    tmpDir,
+			wantErr: "is a directory, not a file",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.wantPanic {
-				requirePanicExit(t, func() { validateFile(tt.path) })
+			t.Parallel()
+
+			err := validateFile(tt.path)
+
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected error containing %q, got %q", tt.wantErr, err.Error())
+				}
 				return
 			}
-			validateFile(tt.path)
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 		})
 	}
 }
@@ -47,9 +60,9 @@ func TestValidate(t *testing.T) {
 	validFile := mustWriteTempFile(t)
 
 	tests := []struct {
-		name      string
-		cfg       UploadConfig
-		wantPanic bool
+		name    string
+		cfg     UploadConfig
+		wantErr string
 	}{
 		{
 			name: "valid config passes",
@@ -73,7 +86,7 @@ func TestValidate(t *testing.T) {
 			},
 		},
 		{
-			name: "missing project id exits",
+			name: "missing project id returns error",
 			cfg: UploadConfig{
 				FilePath:      validFile,
 				ProjectID:     "",
@@ -81,10 +94,10 @@ func TestValidate(t *testing.T) {
 				LangISO:       "en",
 				GitHubRefName: "ref",
 			},
-			wantPanic: true,
+			wantErr: "project ID is required",
 		},
 		{
-			name: "directory path exits before field validation",
+			name: "directory path fails before field validation",
 			cfg: UploadConfig{
 				FilePath:      t.TempDir(),
 				ProjectID:     "p",
@@ -92,10 +105,10 @@ func TestValidate(t *testing.T) {
 				LangISO:       "en",
 				GitHubRefName: "ref",
 			},
-			wantPanic: true,
+			wantErr: "is a directory, not a file",
 		},
 		{
-			name: "missing token exits",
+			name: "missing token returns error",
 			cfg: UploadConfig{
 				FilePath:      validFile,
 				ProjectID:     "p",
@@ -103,10 +116,10 @@ func TestValidate(t *testing.T) {
 				LangISO:       "en",
 				GitHubRefName: "ref",
 			},
-			wantPanic: true,
+			wantErr: "API token is required",
 		},
 		{
-			name: "missing language exits",
+			name: "missing language returns error",
 			cfg: UploadConfig{
 				FilePath:      validFile,
 				ProjectID:     "p",
@@ -114,10 +127,10 @@ func TestValidate(t *testing.T) {
 				LangISO:       "",
 				GitHubRefName: "ref",
 			},
-			wantPanic: true,
+			wantErr: "base language (BASE_LANG) is required",
 		},
 		{
-			name: "missing GitHubRefName exits when tagging enabled",
+			name: "missing GitHubRefName returns error when tagging enabled",
 			cfg: UploadConfig{
 				FilePath:      validFile,
 				ProjectID:     "p",
@@ -126,10 +139,10 @@ func TestValidate(t *testing.T) {
 				GitHubRefName: "",
 				SkipTagging:   false,
 			},
-			wantPanic: true,
+			wantErr: "GitHub reference name (GITHUB_REF_NAME) is required",
 		},
 		{
-			name: "missing file path exits",
+			name: "missing file path returns error",
 			cfg: UploadConfig{
 				FilePath:      filepath.Join(t.TempDir(), "missing.json"),
 				ProjectID:     "p",
@@ -137,26 +150,38 @@ func TestValidate(t *testing.T) {
 				LangISO:       "en",
 				GitHubRefName: "ref",
 			},
-			wantPanic: true,
+			wantErr: "does not exist",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.wantPanic {
-				requirePanicExit(t, func() { validate(tt.cfg) })
+			t.Parallel()
+
+			err := validate(tt.cfg)
+
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected error containing %q, got %q", tt.wantErr, err.Error())
+				}
 				return
 			}
-			validate(tt.cfg)
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 		})
 	}
 }
 
 func TestValidateRequiredFields(t *testing.T) {
 	tests := []struct {
-		name      string
-		cfg       UploadConfig
-		wantPanic bool
+		name    string
+		cfg     UploadConfig
+		wantErr string
 	}{
 		{
 			name: "all required fields present",
@@ -167,47 +192,59 @@ func TestValidateRequiredFields(t *testing.T) {
 			},
 		},
 		{
-			name: "missing project id exits",
+			name: "missing project id returns error",
 			cfg: UploadConfig{
 				Token:   "t",
 				LangISO: "en",
 			},
-			wantPanic: true,
+			wantErr: "project ID is required",
 		},
 		{
-			name: "missing token exits",
+			name: "missing token returns error",
 			cfg: UploadConfig{
 				ProjectID: "p",
 				LangISO:   "en",
 			},
-			wantPanic: true,
+			wantErr: "API token is required",
 		},
 		{
-			name: "missing language exits",
+			name: "missing language returns error",
 			cfg: UploadConfig{
 				ProjectID: "p",
 				Token:     "t",
 			},
-			wantPanic: true,
+			wantErr: "base language (BASE_LANG) is required",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.wantPanic {
-				requirePanicExit(t, func() { validateRequiredFields(tt.cfg) })
+			t.Parallel()
+
+			err := validateRequiredFields(tt.cfg)
+
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected error containing %q, got %q", tt.wantErr, err.Error())
+				}
 				return
 			}
-			validateRequiredFields(tt.cfg)
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 		})
 	}
 }
 
 func TestValidateTaggingInputs(t *testing.T) {
 	tests := []struct {
-		name      string
-		cfg       UploadConfig
-		wantPanic bool
+		name    string
+		cfg     UploadConfig
+		wantErr string
 	}{
 		{
 			name: "tagging disabled allows empty ref name",
@@ -224,22 +261,34 @@ func TestValidateTaggingInputs(t *testing.T) {
 			},
 		},
 		{
-			name: "tagging enabled without ref name exits",
+			name: "tagging enabled without ref name returns error",
 			cfg: UploadConfig{
 				SkipTagging:   false,
 				GitHubRefName: "",
 			},
-			wantPanic: true,
+			wantErr: "GitHub reference name (GITHUB_REF_NAME) is required",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.wantPanic {
-				requirePanicExit(t, func() { validateTaggingInputs(tt.cfg) })
+			t.Parallel()
+
+			err := validateTaggingInputs(tt.cfg)
+
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected error containing %q, got %q", tt.wantErr, err.Error())
+				}
 				return
 			}
-			validateTaggingInputs(tt.cfg)
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 		})
 	}
 }

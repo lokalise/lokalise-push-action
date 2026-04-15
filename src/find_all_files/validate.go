@@ -17,54 +17,79 @@ type config struct {
 }
 
 // validateEnvironment enforces presence of required inputs and normalizes them.
-func validateEnvironment() config {
-	return config{
-		Paths:       parseTranslationsPaths(),
-		BaseLang:    parseBaseLang(),
-		FileExts:    parseFileExtensions(),
-		NamePattern: parseNamePattern(),
-		FlatNaming:  parseFlatNaming(),
+func validateEnvironment() (config, error) {
+	paths, err := parseTranslationsPaths()
+	if err != nil {
+		return config{}, err
 	}
+
+	baseLang, err := parseBaseLang()
+	if err != nil {
+		return config{}, err
+	}
+
+	fileExts, err := parseFileExtensions()
+	if err != nil {
+		return config{}, err
+	}
+
+	namePattern, err := parseNamePattern()
+	if err != nil {
+		return config{}, err
+	}
+
+	flatNaming, err := parseFlatNaming()
+	if err != nil {
+		return config{}, err
+	}
+
+	return config{
+		Paths:       paths,
+		BaseLang:    baseLang,
+		FileExts:    fileExts,
+		NamePattern: namePattern,
+		FlatNaming:  flatNaming,
+	}, nil
 }
 
-func parseNamePattern() string {
+func parseNamePattern() (string, error) {
 	namePattern, err := normalizers.NormalizeOptionalNamePattern(os.Getenv("NAME_PATTERN"))
 	if err != nil {
-		returnWithError(err.Error())
+		return "", err
 	}
-	return namePattern
+	return namePattern, nil
 }
 
-func parseFlatNaming() bool {
+func parseFlatNaming() (bool, error) {
 	flatNaming, err := parsers.ParseBoolEnv("FLAT_NAMING")
 	if err != nil {
-		returnWithError("invalid FLAT_NAMING: expected true or false")
+		return false, fmt.Errorf("invalid FLAT_NAMING: expected true or false")
 	}
-	return flatNaming
+	return flatNaming, nil
 }
 
-func parseFileExtensions() []string {
+func parseFileExtensions() ([]string, error) {
 	fileExts, err := normalizers.NormalizeFileExtensions(parsers.ParseStringArrayEnv("FILE_EXT"))
 	if err != nil {
-		returnWithError(fmt.Sprintf("invalid FILE_EXT: %v", err))
+		return nil, fmt.Errorf("invalid FILE_EXT: %w", err)
 	}
-	return fileExts
+	return fileExts, nil
 }
 
 // parseTranslationsPaths parses and validates repo-relative translation roots.
-func parseTranslationsPaths() []string {
+func parseTranslationsPaths() ([]string, error) {
 	paths, err := parsers.ParseRepoRelativePathsEnv("TRANSLATIONS_PATH")
 	if err != nil {
-		returnWithError(fmt.Sprintf("failed to process params: %v", err))
+		return nil, fmt.Errorf("failed to process params: %w", err)
 	}
-	return paths
+	return paths, nil
 }
 
 // parseBaseLang returns the configured base language or fails if missing.
-func parseBaseLang() string {
+func parseBaseLang() (string, error) {
 	baseLang := os.Getenv("BASE_LANG")
 	if baseLang == "" {
-		returnWithError("BASE_LANG is not set or is empty")
+		return "", fmt.Errorf("BASE_LANG is not set or is empty")
 	}
-	return baseLang
+	return baseLang, nil
 }

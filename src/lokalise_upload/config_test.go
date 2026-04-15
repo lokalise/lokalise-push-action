@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -24,11 +25,11 @@ var configEnvKeys = []string{
 
 func TestPrepareConfig(t *testing.T) {
 	tests := []struct {
-		name      string
-		env       map[string]string
-		filePath  string
-		wantPanic bool
-		assert    func(t *testing.T, cfg UploadConfig)
+		name     string
+		env      map[string]string
+		filePath string
+		wantErr  string
+		assert   func(t *testing.T, cfg UploadConfig)
 	}{
 		{
 			name: "defaults are applied",
@@ -200,28 +201,28 @@ func TestPrepareConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "invalid SKIP_TAGGING exits",
+			name: "invalid SKIP_TAGGING returns error",
 			env: map[string]string{
 				"SKIP_TAGGING": "not-a-bool",
 			},
-			filePath:  "file.json",
-			wantPanic: true,
+			filePath: "file.json",
+			wantErr:  "invalid SKIP_TAGGING",
 		},
 		{
-			name: "invalid SKIP_POLLING exits",
+			name: "invalid SKIP_POLLING returns error",
 			env: map[string]string{
 				"SKIP_POLLING": "not-a-bool",
 			},
-			filePath:  "file.json",
-			wantPanic: true,
+			filePath: "file.json",
+			wantErr:  "invalid SKIP_POLLING",
 		},
 		{
-			name: "invalid SKIP_DEFAULT_FLAGS exits",
+			name: "invalid SKIP_DEFAULT_FLAGS returns error",
 			env: map[string]string{
 				"SKIP_DEFAULT_FLAGS": "not-a-bool",
 			},
-			filePath:  "file.json",
-			wantPanic: true,
+			filePath: "file.json",
+			wantErr:  "invalid SKIP_DEFAULT_FLAGS",
 		},
 	}
 
@@ -231,12 +232,22 @@ func TestPrepareConfig(t *testing.T) {
 				t.Setenv(key, tt.env[key])
 			}
 
-			if tt.wantPanic {
-				requirePanicExit(t, func() { _ = prepareConfig(tt.filePath) })
+			cfg, err := prepareConfig(tt.filePath)
+
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected error containing %q, got %q", tt.wantErr, err.Error())
+				}
 				return
 			}
 
-			cfg := prepareConfig(tt.filePath)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
 			if tt.assert != nil {
 				tt.assert(t, cfg)
 			}

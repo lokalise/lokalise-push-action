@@ -10,30 +10,47 @@ import (
 var exitFunc = os.Exit
 
 func main() {
+	if err := run(); err != nil {
+		returnWithError(err.Error())
+	}
+}
+
+func run() error {
+	return runWith(
+		validateEnvironment,
+		createOutputFile,
+		storeTranslationPaths,
+		closeOutputFile,
+	)
+}
+
+func runWith(
+	validate func() (envConfig, error),
+	createFile func() (*os.File, error),
+	store storePathsFunc,
+	closeFile func(*os.File),
+) error {
 	// Read and validate inputs from the environment.
-	// This step makes sure we have enough info to derive a set of pathspecs.
-	cfg := validateEnvironment()
+	cfg, err := validate()
+	if err != nil {
+		return err
+	}
 
 	// We persist the generated pathspecs to a file that is later consumed by
 	// tj-actions/changed-files via `files_from_source_file`.
-	file := createOutputFile()
+	file, err := createFile()
+	if err != nil {
+		return fmt.Errorf("cannot create output file: %w", err)
+	}
+	defer closeFile(file)
 
 	// Emit one pathspec per line. Consumers expect newline-separated patterns.
 	// Each line can be a direct file path or a glob (git pathspec-style).
-
-	if err := storeTranslationPaths(
-		cfg.Paths,
-		cfg.FlatNaming,
-		cfg.BaseLang,
-		cfg.FileExts,
-		cfg.NamePattern,
-		file,
-	); err != nil {
-		closeOutputFile(file)
-		returnWithError(fmt.Sprintf("cannot store translation paths: %v", err))
+	if err := store(cfg, file); err != nil {
+		return fmt.Errorf("cannot store translation paths: %w", err)
 	}
 
-	closeOutputFile(file)
+	return nil
 }
 
 // returnWithError prints an error and exits non-zero.

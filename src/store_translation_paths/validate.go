@@ -17,53 +17,77 @@ type envConfig struct {
 }
 
 // validateEnvironment reads required variables and applies simple inference.
-// Returns: (paths, base language code, file extensions, optional custom name pattern).
-func validateEnvironment() envConfig {
-	return envConfig{
-		Paths:       parseTranslationsPaths(),
-		BaseLang:    parseBaseLang(),
-		FileExts:    parseFileExtensions(),
-		NamePattern: parseNamePattern(),
-		FlatNaming:  parseFlatNaming(),
+func validateEnvironment() (envConfig, error) {
+	paths, err := parseTranslationsPaths()
+	if err != nil {
+		return envConfig{}, err
 	}
+
+	baseLang, err := parseBaseLang()
+	if err != nil {
+		return envConfig{}, err
+	}
+
+	fileExts, err := parseFileExtensions()
+	if err != nil {
+		return envConfig{}, err
+	}
+
+	namePattern, err := parseNamePattern()
+	if err != nil {
+		return envConfig{}, err
+	}
+
+	flatNaming, err := parseFlatNaming()
+	if err != nil {
+		return envConfig{}, err
+	}
+
+	return envConfig{
+		Paths:       paths,
+		BaseLang:    baseLang,
+		FileExts:    fileExts,
+		NamePattern: namePattern,
+		FlatNaming:  flatNaming,
+	}, nil
 }
 
-func parseTranslationsPaths() []string {
+func parseTranslationsPaths() ([]string, error) {
 	paths, err := parsers.ParseRepoRelativePathsEnv("TRANSLATIONS_PATH")
 	if err != nil {
-		returnWithError(fmt.Sprintf("invalid TRANSLATIONS_PATH: %v", err))
+		return nil, fmt.Errorf("invalid TRANSLATIONS_PATH: %w", err)
 	}
-	return paths
+	return paths, nil
 }
 
-func parseBaseLang() string {
+func parseBaseLang() (string, error) {
 	baseLang := os.Getenv("BASE_LANG")
 	if baseLang == "" {
-		returnWithError("BASE_LANG is not set or is empty")
+		return "", fmt.Errorf("BASE_LANG is not set or is empty")
 	}
-	return baseLang
+	return baseLang, nil
 }
 
-func parseNamePattern() string {
+func parseNamePattern() (string, error) {
 	namePattern, err := normalizers.NormalizeOptionalNamePattern(os.Getenv("NAME_PATTERN"))
 	if err != nil {
-		returnWithError(err.Error())
+		return "", err
 	}
-	return namePattern
+	return namePattern, nil
 }
 
-func parseFileExtensions() []string {
+func parseFileExtensions() ([]string, error) {
 	fileExts, err := normalizers.NormalizeFileExtensions(parsers.ParseStringArrayEnv("FILE_EXT"))
 	if err != nil {
-		returnWithError(fmt.Sprintf("invalid FILE_EXT: %v", err))
+		return nil, fmt.Errorf("invalid FILE_EXT: %w", err)
 	}
-	return fileExts
+	return fileExts, nil
 }
 
-func parseFlatNaming() bool {
+func parseFlatNaming() (bool, error) {
 	flatNaming, err := parsers.ParseBoolEnv("FLAT_NAMING")
 	if err != nil {
-		returnWithError("invalid FLAT_NAMING: expected true or false")
+		return false, fmt.Errorf("invalid FLAT_NAMING: expected true or false")
 	}
-	return flatNaming
+	return flatNaming, nil
 }

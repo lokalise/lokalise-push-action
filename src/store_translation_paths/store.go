@@ -8,6 +8,8 @@ import (
 	"strings"
 )
 
+type storePathsFunc func(cfg envConfig, writer io.Writer) error
+
 // storeTranslationPaths emits one pathspec per root and (if applicable) per extension.
 // Output is newline-separated, ready for consumption by changed-files (files_from_source_file).
 // Rules:
@@ -15,18 +17,18 @@ import (
 //     The pattern may include globs (e.g., "**/*.yaml") and/or a concrete filename.
 //   - If flatNaming is true  -> "<root>/<baseLang>.<ext>"
 //   - If flatNaming is false -> "<root>/<baseLang>/**/*.ext"
-func storeTranslationPaths(paths []string, flatNaming bool, baseLang string, fileExts []string, namePattern string, writer io.Writer) error {
+func storeTranslationPaths(cfg envConfig, writer io.Writer) error {
 	seen := make(map[string]struct{}) // avoid duplicates across roots/exts
 
 	// Sort once to keep output deterministic across runs.
-	exts := append([]string(nil), fileExts...)
+	exts := append([]string(nil), cfg.FileExts...)
 	sort.Strings(exts)
 
-	for _, root := range paths {
-		if namePattern != "" {
+	for _, root := range cfg.Paths {
+		if cfg.NamePattern != "" {
 			// Custom pattern takes precedence; caller is responsible for including
 			// filename/ext or globs. We don't expand it per-extension.
-			if err := writeUniqueLine(writer, seen, filepath.Join(root, namePattern)); err != nil {
+			if err := writeUniqueLine(writer, seen, filepath.Join(root, cfg.NamePattern)); err != nil {
 				return err
 			}
 			continue
@@ -39,7 +41,7 @@ func storeTranslationPaths(paths []string, flatNaming bool, baseLang string, fil
 				continue
 			}
 
-			pattern := buildTranslationPattern(root, flatNaming, baseLang, ext)
+			pattern := buildTranslationPattern(root, cfg.FlatNaming, cfg.BaseLang, ext)
 			if err := writeUniqueLine(writer, seen, pattern); err != nil {
 				return err
 			}

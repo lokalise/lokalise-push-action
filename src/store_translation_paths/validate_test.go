@@ -3,6 +3,7 @@ package main
 import (
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -15,7 +16,7 @@ func TestValidateEnvironment(t *testing.T) {
 		wantFileExt     []string
 		wantNamePattern string
 		wantFlatNaming  bool
-		wantPanic       bool
+		wantErr         string
 	}{
 		{
 			name: "Valid environment variables",
@@ -41,7 +42,7 @@ func TestValidateEnvironment(t *testing.T) {
 				"NAME_PATTERN":      "",
 				"FLAT_NAMING":       "false",
 			},
-			wantPanic: true,
+			wantErr: "invalid TRANSLATIONS_PATH",
 		},
 		{
 			name: "NAME_PATTERN trims and normalizes path-like pattern",
@@ -82,7 +83,7 @@ func TestValidateEnvironment(t *testing.T) {
 				"NAME_PATTERN":      "../**/*.json",
 				"FLAT_NAMING":       "false",
 			},
-			wantPanic: true,
+			wantErr: "path escapes repo root",
 		},
 		{
 			name: "Translation path with ../",
@@ -93,7 +94,7 @@ func TestValidateEnvironment(t *testing.T) {
 				"NAME_PATTERN":      "",
 				"FLAT_NAMING":       "false",
 			},
-			wantPanic: true,
+			wantErr: "invalid TRANSLATIONS_PATH",
 		},
 		{
 			name: "TRANSLATIONS_PATH cleans to .. fails",
@@ -104,7 +105,7 @@ func TestValidateEnvironment(t *testing.T) {
 				"NAME_PATTERN":      "",
 				"FLAT_NAMING":       "false",
 			},
-			wantPanic: true,
+			wantErr: "invalid TRANSLATIONS_PATH",
 		},
 		{
 			name: "TRANSLATIONS_PATH ./path is OK",
@@ -130,7 +131,7 @@ func TestValidateEnvironment(t *testing.T) {
 				"NAME_PATTERN":      "",
 				"FLAT_NAMING":       "true",
 			},
-			wantPanic: true,
+			wantErr: "invalid TRANSLATIONS_PATH",
 		},
 		{
 			name: "NamePattern glob OK",
@@ -186,7 +187,7 @@ func TestValidateEnvironment(t *testing.T) {
 				"NAME_PATTERN":      "",
 				"FLAT_NAMING":       "true",
 			},
-			wantPanic: true,
+			wantErr: "invalid FILE_EXT",
 		},
 		{
 			name: "Absolute NAME_PATTERN fails",
@@ -197,7 +198,7 @@ func TestValidateEnvironment(t *testing.T) {
 				"NAME_PATTERN":      "/tmp/file.json",
 				"FLAT_NAMING":       "true",
 			},
-			wantPanic: true,
+			wantErr: "must be relative",
 		},
 		{
 			name: "Whitespace NAME_PATTERN is treated as empty",
@@ -223,7 +224,7 @@ func TestValidateEnvironment(t *testing.T) {
 				"NAME_PATTERN":      "~/.config/*.json",
 				"FLAT_NAMING":       "true",
 			},
-			wantPanic: true,
+			wantErr: "must be relative",
 		},
 		{
 			name: "FILE_EXT skips empty entries after normalization",
@@ -264,28 +265,36 @@ func TestValidateEnvironment(t *testing.T) {
 				"NAME_PATTERN":      "",
 				"FLAT_NAMING":       "wat",
 			},
-			wantPanic: true,
+			wantErr: "invalid FLAT_NAMING",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			for _, key := range []string{"TRANSLATIONS_PATH", "BASE_LANG", "FILE_EXT", "NAME_PATTERN", "FLAT_NAMING"} {
+			for _, key := range []string{
+				"TRANSLATIONS_PATH",
+				"BASE_LANG",
+				"FILE_EXT",
+				"NAME_PATTERN",
+				"FLAT_NAMING",
+			} {
 				t.Setenv(key, tt.env[key])
 			}
 
-			if tt.wantPanic {
-				defer func() {
-					if r := recover(); r == nil {
-						t.Fatalf("expected panic")
-					}
-				}()
+			got, err := validateEnvironment()
+
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected error containing %q, got %q", tt.wantErr, err.Error())
+				}
+				return
 			}
 
-			got := validateEnvironment()
-
-			if tt.wantPanic {
-				return
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
 
 			if !reflect.DeepEqual(got.Paths, tt.wantPaths) {

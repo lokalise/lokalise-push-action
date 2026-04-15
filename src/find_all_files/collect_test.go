@@ -75,6 +75,8 @@ func TestHasMatchingExtension(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := hasMatchingExtension(tt.filename, tt.fileExts)
 			if got != tt.want {
 				t.Fatalf("hasMatchingExtension(%q, %v) = %v, want %v", tt.filename, tt.fileExts, got, tt.want)

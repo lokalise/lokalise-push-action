@@ -7,45 +7,55 @@ import (
 
 // validate performs input sanity checks before any network calls.
 // It fails fast with actionable messages for CI logs.
-func validate(cfg UploadConfig) {
-	validateFile(cfg.FilePath)
-	validateRequiredFields(cfg)
-	validateTaggingInputs(cfg)
+func validate(cfg UploadConfig) error {
+	if err := validateFile(cfg.FilePath); err != nil {
+		return err
+	}
+	if err := validateRequiredFields(cfg); err != nil {
+		return err
+	}
+	if err := validateTaggingInputs(cfg); err != nil {
+		return err
+	}
+	return nil
 }
 
 // validateRequiredFields checks the minimum required Lokalise settings.
-func validateRequiredFields(cfg UploadConfig) {
+func validateRequiredFields(cfg UploadConfig) error {
 	if cfg.ProjectID == "" {
-		returnWithError("Project ID is required and cannot be empty.")
+		return fmt.Errorf("project ID is required and cannot be empty")
 	}
 	if cfg.Token == "" {
-		returnWithError("API token is required and cannot be empty.")
+		return fmt.Errorf("API token is required and cannot be empty")
 	}
 	if cfg.LangISO == "" {
-		returnWithError("Base language (BASE_LANG) is required and cannot be empty.")
+		return fmt.Errorf("base language (BASE_LANG) is required and cannot be empty")
 	}
+	return nil
 }
 
 // validateTaggingInputs ensures branch metadata is available when tagging is enabled.
-func validateTaggingInputs(cfg UploadConfig) {
+func validateTaggingInputs(cfg UploadConfig) error {
 	if !cfg.SkipTagging && cfg.GitHubRefName == "" {
-		returnWithError("GitHub reference name (GITHUB_REF_NAME) is required and cannot be empty.")
+		return fmt.Errorf("GitHub reference name (GITHUB_REF_NAME) is required and cannot be empty")
 	}
+	return nil
 }
 
 // validateFile ensures the path exists and points to a regular file.
-func validateFile(filePath string) {
+func validateFile(filePath string) error {
 	fi, err := os.Stat(filePath)
 	if os.IsNotExist(err) {
-		returnWithError(fmt.Sprintf("File %q does not exist", filePath))
+		return fmt.Errorf("file %q does not exist", filePath)
 	}
 	if err != nil {
-		returnWithError(fmt.Sprintf("Cannot stat file %s: %v", filePath, err))
+		return fmt.Errorf("cannot stat file %s: %w", filePath, err)
 	}
 	if fi.IsDir() {
-		returnWithError(fmt.Sprintf("Path %s is a directory, not a file.", filePath))
+		return fmt.Errorf("path %s is a directory, not a file", filePath)
 	}
 	if !fi.Mode().IsRegular() {
-		returnWithError(fmt.Sprintf("Path %s is not a regular file.", filePath))
+		return fmt.Errorf("path %s is not a regular file", filePath)
 	}
+	return nil
 }

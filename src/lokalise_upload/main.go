@@ -11,6 +11,8 @@ import (
 // Overridable in tests to assert exit behavior without terminating the process.
 var exitFunc = os.Exit
 
+type uploaderFunc func(context.Context, UploadConfig, ClientFactory) error
+
 func main() {
 	if err := run(); err != nil {
 		returnWithError(err.Error())
@@ -18,32 +20,57 @@ func main() {
 }
 
 func run() error {
-	filePath := parseCLIArgs()
-	cfg := prepareConfig(filePath)
-	validate(cfg)
+	return runWith(
+		os.Args,
+		prepareConfig,
+		validate,
+		uploadFile,
+		&LokaliseFactory{},
+	)
+}
+
+func runWith(
+	args []string,
+	prepare func(string) (UploadConfig, error),
+	validate func(UploadConfig) error,
+	upload uploaderFunc,
+	factory ClientFactory,
+) error {
+	filePath, err := parseCLIArgs(args)
+	if err != nil {
+		return err
+	}
+
+	cfg, err := prepare(filePath)
+	if err != nil {
+		return err
+	}
+
+	if err := validate(cfg); err != nil {
+		return err
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.UploadTimeout)
 	defer cancel()
 
-	return uploadFile(ctx, cfg, &LokaliseFactory{})
+	return upload(ctx, cfg, factory)
 }
 
 // parseCLIArgs validates the CLI input and returns the target file path.
-func parseCLIArgs() string {
-	if len(os.Args) != 2 {
-		returnWithError("Usage: lokalise_upload <file>")
+func parseCLIArgs(args []string) (string, error) {
+	if len(args) != 2 {
+		return "", fmt.Errorf("usage: lokalise_upload <file>")
 	}
 
-	filePath := strings.TrimSpace(os.Args[1])
+	filePath := strings.TrimSpace(args[1])
 	if filePath == "" {
-		returnWithError("File path is empty.")
+		return "", fmt.Errorf("file path is empty")
 	}
 
-	return filePath
+	return filePath, nil
 }
 
 // returnWithError prints an error message to stderr and exits the program with a non-zero status code.
-// Kept as a function var (exitFunc) to simplify unit testing without terminating the test runner.
 func returnWithError(message string) {
 	fmt.Fprintf(os.Stderr, "Error: %s\n", message)
 	exitFunc(1)

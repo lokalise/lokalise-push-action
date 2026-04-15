@@ -1,10 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -109,4 +112,198 @@ func setupTestFileStructure(baseDir string) error {
 	}
 
 	return nil
+}
+
+func TestRunWith(t *testing.T) {
+	t.Run("happy path", func(t *testing.T) {
+		t.Parallel()
+
+		wantCfg := config{
+			Paths:       []string{"translations", "locales"},
+			BaseLang:    "en",
+			FileExts:    []string{"json", "yaml"},
+			NamePattern: "",
+			FlatNaming:  true,
+		}
+		wantFiles := []string{"translations/en.json", "locales/en.yaml"}
+
+		validateCalled := false
+		findCalled := false
+		processCalled := false
+		writeCalled := false
+
+		validate := func() (config, error) {
+			validateCalled = true
+			return wantCfg, nil
+		}
+
+		find := func(paths []string, flatNaming bool, baseLang string, fileExts []string, namePattern string) ([]string, error) {
+			findCalled = true
+
+			if !reflect.DeepEqual(paths, wantCfg.Paths) {
+				t.Fatalf("paths mismatch. want=%v got=%v", wantCfg.Paths, paths)
+			}
+			if flatNaming != wantCfg.FlatNaming {
+				t.Fatalf("flatNaming mismatch. want=%v got=%v", wantCfg.FlatNaming, flatNaming)
+			}
+			if baseLang != wantCfg.BaseLang {
+				t.Fatalf("baseLang mismatch. want=%q got=%q", wantCfg.BaseLang, baseLang)
+			}
+			if !reflect.DeepEqual(fileExts, wantCfg.FileExts) {
+				t.Fatalf("fileExts mismatch. want=%v got=%v", wantCfg.FileExts, fileExts)
+			}
+			if namePattern != wantCfg.NamePattern {
+				t.Fatalf("namePattern mismatch. want=%q got=%q", wantCfg.NamePattern, namePattern)
+			}
+
+			return wantFiles, nil
+		}
+
+		process := func(allFiles []string, writeOutput func(string, string) bool) error {
+			processCalled = true
+
+			if !reflect.DeepEqual(allFiles, wantFiles) {
+				t.Fatalf("allFiles mismatch. want=%v got=%v", wantFiles, allFiles)
+			}
+
+			if !writeOutput("probe", "ok") {
+				t.Fatal("expected writeOutput probe to succeed")
+			}
+
+			return nil
+		}
+
+		write := func(key, value string) bool {
+			writeCalled = true
+			return key == "probe" && value == "ok"
+		}
+
+		err := runWith(validate, find, process, write)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if !validateCalled {
+			t.Fatal("validate was not called")
+		}
+		if !findCalled {
+			t.Fatal("find was not called")
+		}
+		if !processCalled {
+			t.Fatal("process was not called")
+		}
+		if !writeCalled {
+			t.Fatal("write was not called")
+		}
+	})
+
+	t.Run("returns validation error and stops", func(t *testing.T) {
+		t.Parallel()
+
+		validate := func() (config, error) {
+			return config{}, errors.New("bad env")
+		}
+
+		find := func([]string, bool, string, []string, string) ([]string, error) {
+			t.Fatal("find should not be called")
+			return nil, nil
+		}
+
+		process := func([]string, func(string, string) bool) error {
+			t.Fatal("process should not be called")
+			return nil
+		}
+
+		write := func(string, string) bool {
+			t.Fatal("write should not be called")
+			return true
+		}
+
+		err := runWith(validate, find, process, write)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "bad env") {
+			t.Fatalf("expected error containing %q, got %q", "bad env", err.Error())
+		}
+	})
+
+	t.Run("wraps discovery error and stops", func(t *testing.T) {
+		t.Parallel()
+
+		validate := func() (config, error) {
+			return config{
+				Paths:       []string{"translations"},
+				BaseLang:    "en",
+				FileExts:    []string{"json"},
+				NamePattern: "",
+				FlatNaming:  false,
+			}, nil
+		}
+
+		find := func([]string, bool, string, []string, string) ([]string, error) {
+			return nil, errors.New("glob exploded")
+		}
+
+		process := func([]string, func(string, string) bool) error {
+			t.Fatal("process should not be called")
+			return nil
+		}
+
+		write := func(string, string) bool {
+			t.Fatal("write should not be called")
+			return true
+		}
+
+		err := runWith(validate, find, process, write)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "unable to find translation files") {
+			t.Fatalf("expected wrapped error containing %q, got %q", "unable to find translation files", err.Error())
+		}
+		if !strings.Contains(err.Error(), "glob exploded") {
+			t.Fatalf("expected wrapped error containing %q, got %q", "glob exploded", err.Error())
+		}
+	})
+
+	t.Run("returns process error", func(t *testing.T) {
+		t.Parallel()
+
+		wantFiles := []string{"translations/en.json"}
+
+		validate := func() (config, error) {
+			return config{
+				Paths:       []string{"translations"},
+				BaseLang:    "en",
+				FileExts:    []string{"json"},
+				NamePattern: "",
+				FlatNaming:  false,
+			}, nil
+		}
+
+		find := func([]string, bool, string, []string, string) ([]string, error) {
+			return wantFiles, nil
+		}
+
+		process := func(allFiles []string, writeOutput func(string, string) bool) error {
+			if !reflect.DeepEqual(allFiles, wantFiles) {
+				t.Fatalf("allFiles mismatch. want=%v got=%v", wantFiles, allFiles)
+			}
+			return errors.New("cannot write ALL_FILES to GITHUB_OUTPUT")
+		}
+
+		write := func(string, string) bool {
+			t.Fatal("write should not be called directly in this test")
+			return true
+		}
+
+		err := runWith(validate, find, process, write)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "cannot write ALL_FILES to GITHUB_OUTPUT") {
+			t.Fatalf("expected error containing %q, got %q", "cannot write ALL_FILES to GITHUB_OUTPUT", err.Error())
+		}
+	})
 }
