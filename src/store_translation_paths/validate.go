@@ -23,7 +23,7 @@ func validateEnvironment() (envConfig, error) {
 		return envConfig{}, err
 	}
 
-	baseLang, err := parseBaseLang()
+	baseLang, err := parsers.ParseLangEnv("BASE_LANG")
 	if err != nil {
 		return envConfig{}, err
 	}
@@ -58,14 +58,6 @@ func parseTranslationsPaths() ([]string, error) {
 		return nil, fmt.Errorf("invalid TRANSLATIONS_PATH: %w", err)
 	}
 	return paths, nil
-}
-
-func parseBaseLang() (string, error) {
-	baseLang := os.Getenv("BASE_LANG")
-	if baseLang == "" {
-		return "", fmt.Errorf("BASE_LANG is not set or is empty")
-	}
-	return baseLang, nil
 }
 
 func parseNamePattern() (string, error) {
