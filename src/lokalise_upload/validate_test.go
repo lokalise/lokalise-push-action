@@ -139,7 +139,7 @@ func TestValidate(t *testing.T) {
 				GitHubRefName: "",
 				SkipTagging:   false,
 			},
-			wantErr: "GitHub reference name (GITHUB_REF_NAME) is required",
+			wantErr: "GitHub reference name (GITHUB_HEAD_REF or GITHUB_REF_NAME) is required when tagging is enabled",
 		},
 		{
 			name: "missing file path returns error",
@@ -266,7 +266,7 @@ func TestValidateTaggingInputs(t *testing.T) {
 				SkipTagging:   false,
 				GitHubRefName: "",
 			},
-			wantErr: "GitHub reference name (GITHUB_REF_NAME) is required",
+			wantErr: "GitHub reference name (GITHUB_HEAD_REF or GITHUB_REF_NAME) is required when tagging is enabled",
 		},
 	}
 

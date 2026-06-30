@@ -29,7 +29,7 @@ func findAllTranslationFiles(paths []string, flatNaming bool, baseLang string, f
 		}
 
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("cannot collect translation files under %q: %w", root, err)
 		}
 	}
 

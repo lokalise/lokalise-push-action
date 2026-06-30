@@ -10,11 +10,11 @@ inputs:
     required: true
   base_lang:
     description: 'Base language (e.g., en, fr_FR)'
-    required: true
+    required: false
     default: 'en'
   translations_path:
     description: 'Paths to translation files'
-    required: true
+    required: false
     default: |
       locales
   file_ext:
@@ -187,17 +187,19 @@ runs:
       if: inputs.rambo_mode != 'true' && inputs.use_tag_tracking == 'true'
       id: get-last-sync-sha
       shell: bash
+      env:
+        BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
       run: |
         set -euo pipefail
 
-        BRANCH_NAME="${{ github.head_ref || github.ref_name }}"
+        BRANCH_NAME="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
         TAG_NAME="lokalise-sync-${BRANCH_NAME}"
         echo "Looking for tag: $TAG_NAME"
 
         if git ls-remote --exit-code --refs --tags origin "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
           echo "Tag '$TAG_NAME' found on remote."
           
-          git fetch --quiet origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME" || true
+          git fetch --force --quiet origin "+refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
           TAG_SHA=$(git rev-list -n1 "$TAG_NAME" 2>/dev/null || echo "")
           if [ -n "$TAG_SHA" ]; then
             echo "Found tag '$TAG_NAME': $TAG_SHA"
@@ -245,10 +247,10 @@ runs:
     - name: Get changed files
       if: inputs.rambo_mode != 'true' && (inputs.use_tag_tracking != 'true' || steps.check-sha.outputs.identical != 'true')
       id: changed-files
-      # tj-actions/changed-files@v47.0.5
+      # tj-actions/changed-files@v47.0.6
       uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96
       with:
-        files_from_source_file: lok_action_paths_temp.txt
+        files_from_source_file: .git/lokalise-action/paths.txt
         separator: ','
         base_sha: ${{ inputs.use_tag_tracking == 'true' && steps.get-last-sync-sha.outputs.base_sha || '' }}
         sha: ${{ inputs.use_tag_tracking == 'true' && github.sha || '' }}

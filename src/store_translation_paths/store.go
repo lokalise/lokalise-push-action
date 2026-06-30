@@ -20,7 +20,7 @@ type storePathsFunc func(cfg envConfig, writer io.Writer) error
 func storeTranslationPaths(cfg envConfig, writer io.Writer) error {
 	seen := make(map[string]struct{}) // avoid duplicates across roots/exts
 
-	// Sort once to keep output deterministic across runs.
+	// Sort extensions to keep output deterministic while preserving root order.
 	exts := append([]string(nil), cfg.FileExts...)
 	sort.Strings(exts)
 

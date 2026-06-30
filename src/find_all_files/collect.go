@@ -73,7 +73,7 @@ func collectFlatFiles(root, baseLang string, fileExts []string, add func(string)
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return fmt.Errorf("error reading directory %s: %w", root, err)
+		return fmt.Errorf("error reading directory %q: %w", root, err)
 	}
 
 	for _, entry := range entries {
@@ -113,7 +113,7 @@ func collectNestedFiles(root, baseLang string, fileExts []string, add func(strin
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return fmt.Errorf("error accessing directory %s: %w", targetDir, err)
+		return fmt.Errorf("error accessing directory %q: %w", targetDir, err)
 	}
 
 	if !info.IsDir() {
@@ -122,7 +122,7 @@ func collectNestedFiles(root, baseLang string, fileExts []string, add func(strin
 
 	return filepath.WalkDir(targetDir, func(fp string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return fmt.Errorf("error walking through directory %s: %w", targetDir, walkErr)
+			return fmt.Errorf("error walking through directory %q: %w", targetDir, walkErr)
 		}
 		if d.IsDir() {
 			return nil

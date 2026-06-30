@@ -5,6 +5,7 @@ import (
 	"errors"
 	"maps"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -113,11 +114,13 @@ func TestCreateOutputFile(t *testing.T) {
 		_ = file.Close()
 	}()
 
-	if file.Name() != "lok_action_paths_temp.txt" {
-		t.Fatalf("unexpected file name: %q", file.Name())
+	expectedPath := filepath.Join(".git", "lokalise-action", "paths.txt")
+
+	if filepath.Clean(file.Name()) != expectedPath {
+		t.Fatalf("unexpected file name: want=%q got=%q", expectedPath, file.Name())
 	}
 
-	if _, err := os.Stat("lok_action_paths_temp.txt"); err != nil {
+	if _, err := os.Stat(expectedPath); err != nil {
 		t.Fatalf("expected file to exist, stat failed: %v", err)
 	}
 }
@@ -128,7 +131,10 @@ func TestCloseOutputFile(t *testing.T) {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
 
-	closeOutputFile(file)
+	err = closeOutputFile(file)
+	if err != nil {
+		t.Fatalf("failed to create close file: %v", err)
+	}
 
 	if _, err := file.Write([]byte("x")); err == nil {
 		t.Fatal("expected write to fail after close, but it succeeded")

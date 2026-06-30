@@ -59,12 +59,17 @@ func prepareConfig(filePath string) (UploadConfig, error) {
 		return UploadConfig{}, err
 	}
 
+	githubRefName := strings.TrimSpace(os.Getenv("GITHUB_HEAD_REF"))
+	if githubRefName == "" {
+		githubRefName = strings.TrimSpace(os.Getenv("GITHUB_REF_NAME"))
+	}
+
 	return UploadConfig{
 		FilePath:         filePath,
 		ProjectID:        strings.TrimSpace(os.Getenv("LOKALISE_PROJECT_ID")),
 		Token:            strings.TrimSpace(os.Getenv("LOKALISE_API_TOKEN")),
 		LangISO:          strings.TrimSpace(os.Getenv("BASE_LANG")),
-		GitHubRefName:    strings.TrimSpace(os.Getenv("GITHUB_REF_NAME")),
+		GitHubRefName:    githubRefName,
 		AdditionalParams: strings.TrimSpace(os.Getenv("ADDITIONAL_PARAMS")),
 
 		SkipTagging:      skipTagging,
@@ -84,7 +89,7 @@ func prepareConfig(filePath string) (UploadConfig, error) {
 func parseBoolEnv(key string) (bool, error) {
 	value, err := parsers.ParseBoolEnv(key)
 	if err != nil {
-		return false, fmt.Errorf("invalid %s: expected true or false", key)
+		return false, fmt.Errorf("invalid %s: expected true or false: %w", key, err)
 	}
 	return value, nil
 }

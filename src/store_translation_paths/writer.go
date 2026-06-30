@@ -8,34 +8,40 @@ import (
 )
 
 // writeUniqueLine writes a normalized newline-terminated pathspec once.
-func writeUniqueLine(writer io.Writer, seen map[string]struct{}, path string) error {
-	line := filepath.ToSlash(filepath.Join(".", path))
+func writeUniqueLine(writer io.Writer, seen map[string]struct{}, pathspec string) error {
+	line := filepath.ToSlash(filepath.Clean(pathspec))
+	if line == "." || line == "" {
+		return fmt.Errorf("empty pathspec")
+	}
 
 	if _, ok := seen[line]; ok {
 		return nil
 	}
 
-	_, err := writer.Write([]byte(line + "\n"))
+	if _, err := fmt.Fprintln(writer, line); err != nil {
+		return err
+	}
 
 	seen[line] = struct{}{}
-
-	return err
+	return nil
 }
 
 // createOutputFile creates the temp file consumed later by changed-files.
 func createOutputFile() (*os.File, error) {
-	file, err := os.Create("lok_action_paths_temp.txt")
+	dir := filepath.Join(".git", "lokalise-action")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, fmt.Errorf("cannot create output directory: %w", err)
+	}
+
+	file, err := os.Create(filepath.Join(dir, "paths.txt"))
 	if err != nil {
-		return nil, fmt.Errorf("cannot create output file: %w", err)
+		return nil, err
 	}
 
 	return file, nil
 }
 
-// closeOutputFile closes the output file and prints a warning on failure.
-// This warning is non-fatal because the file may have already been written successfully.
-func closeOutputFile(file *os.File) {
-	if cerr := file.Close(); cerr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to close file properly: %v\n", cerr)
-	}
+// closeOutputFile closes the output file.
+func closeOutputFile(file *os.File) error {
+	return file.Close()
 }

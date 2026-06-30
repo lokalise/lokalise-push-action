@@ -53,7 +53,11 @@ func validateEnvironment() (config, error) {
 }
 
 func parseNamePattern() (string, error) {
-	return normalizers.NormalizeOptionalNamePattern(os.Getenv("NAME_PATTERN"))
+	namePattern, err := normalizers.NormalizeOptionalNamePattern(os.Getenv("NAME_PATTERN"))
+	if err != nil {
+		return "", fmt.Errorf("invalid NAME_PATTERN: %w", err)
+	}
+	return namePattern, nil
 }
 
 func parseFlatNaming() (bool, error) {
@@ -76,7 +80,7 @@ func parseFileExtensions() ([]string, error) {
 func parseTranslationsPaths() ([]string, error) {
 	paths, err := parsers.ParseRepoRelativePathsEnv("TRANSLATIONS_PATH")
 	if err != nil {
-		return nil, fmt.Errorf("failed to process params: %w", err)
+		return nil, fmt.Errorf("invalid TRANSLATIONS_PATH: %w", err)
 	}
 	return paths, nil
 }

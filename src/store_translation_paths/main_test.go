@@ -72,19 +72,19 @@ func TestRunWith(t *testing.T) {
 			return nil
 		}
 
-		closeFile := func(file *os.File) {
+		closeFile := func(file *os.File) error {
 			closeCalled = true
 			if file != createdFile {
-				t.Fatalf("closeFile got unexpected file. want=%v got=%v", createdFile, file)
+				return fmt.Errorf("closeFile got unexpected file. want=%v got=%v", createdFile, file)
 			}
-			_ = file.Close()
+
+			return file.Close()
 		}
 
 		err := runWith(validate, createFile, store, closeFile)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-
 		if !validateCalled {
 			t.Fatal("validate was not called")
 		}
@@ -116,14 +116,17 @@ func TestRunWith(t *testing.T) {
 			return nil
 		}
 
-		closeFile := func(*os.File) {
+		closeFile := func(*os.File) error {
+			t.Helper()
 			t.Fatal("closeFile should not be called")
+			return nil
 		}
 
 		err := runWith(validate, createFile, store, closeFile)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
+
 		if !strings.Contains(err.Error(), "bad env") {
 			t.Fatalf("expected error containing %q, got %q", "bad env", err.Error())
 		}
@@ -150,8 +153,10 @@ func TestRunWith(t *testing.T) {
 			return nil
 		}
 
-		closeFile := func(*os.File) {
+		closeFile := func(*os.File) error {
+			t.Helper()
 			t.Fatal("closeFile should not be called")
+			return nil
 		}
 
 		err := runWith(validate, createFile, store, closeFile)
@@ -202,18 +207,20 @@ func TestRunWith(t *testing.T) {
 			return errors.New("disk full")
 		}
 
-		closeFile := func(file *os.File) {
+		closeFile := func(file *os.File) error {
 			closeCalled = true
 			if file != createdFile {
-				t.Fatalf("closeFile got unexpected file. want=%v got=%v", createdFile, file)
+				return fmt.Errorf("closeFile got unexpected file. want=%v got=%v", createdFile, file)
 			}
-			_ = file.Close()
+
+			return file.Close()
 		}
 
 		err := runWith(validate, createFile, store, closeFile)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
+
 		if !strings.Contains(err.Error(), "cannot store translation paths") {
 			t.Fatalf("expected wrapped error containing %q, got %q", "cannot store translation paths", err.Error())
 		}

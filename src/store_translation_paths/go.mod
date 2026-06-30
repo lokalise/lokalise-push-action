@@ -2,8 +2,8 @@ module store_translation_paths
 
 go 1.26
 
-toolchain go1.26.2
+toolchain go1.26.4
 
-require github.com/bodrovis/lokalise-actions-common/v2 v2.13.0
+require github.com/bodrovis/lokalise-actions-common/v2 v2.15.0
 
-require go.yaml.in/yaml/v4 v4.0.0-rc.4 // indirect
+require go.yaml.in/yaml/v4 v4.0.0-rc.6 // indirect

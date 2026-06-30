@@ -55,7 +55,7 @@ func validateEnvironment() (envConfig, error) {
 func parseTranslationsPaths() ([]string, error) {
 	paths, err := parsers.ParseRepoRelativePathsEnv("TRANSLATIONS_PATH")
 	if err != nil {
-		return nil, fmt.Errorf("invalid TRANSLATIONS_PATH: %w", err)
+		return nil, fmt.Errorf("failed to process params: %w", err)
 	}
 	return paths, nil
 }
@@ -63,7 +63,7 @@ func parseTranslationsPaths() ([]string, error) {
 func parseNamePattern() (string, error) {
 	namePattern, err := normalizers.NormalizeOptionalNamePattern(os.Getenv("NAME_PATTERN"))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("invalid NAME_PATTERN: %w", err)
 	}
 	return namePattern, nil
 }
@@ -79,7 +79,7 @@ func parseFileExtensions() ([]string, error) {
 func parseFlatNaming() (bool, error) {
 	flatNaming, err := parsers.ParseBoolEnv("FLAT_NAMING")
 	if err != nil {
-		return false, fmt.Errorf("invalid FLAT_NAMING: expected true or false")
+		return false, fmt.Errorf("invalid FLAT_NAMING: expected true or false: %w", err)
 	}
 	return flatNaming, nil
 }

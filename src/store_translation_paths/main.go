@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 )
@@ -28,8 +29,8 @@ func runWith(
 	validate func() (envConfig, error),
 	createFile func() (*os.File, error),
 	store storePathsFunc,
-	closeFile func(*os.File),
-) error {
+	closeFile func(*os.File) error,
+) (err error) {
 	// Read and validate inputs from the environment.
 	cfg, err := validate()
 	if err != nil {
@@ -42,7 +43,12 @@ func runWith(
 	if err != nil {
 		return fmt.Errorf("cannot create output file: %w", err)
 	}
-	defer closeFile(file)
+
+	defer func() {
+		if closeErr := closeFile(file); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("cannot close output file: %w", closeErr))
+		}
+	}()
 
 	// Emit one pathspec per line. Consumers expect newline-separated patterns.
 	// Each line can be a direct file path or a glob (git pathspec-style).

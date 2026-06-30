@@ -37,7 +37,7 @@ func validateRequiredFields(cfg UploadConfig) error {
 // validateTaggingInputs ensures branch metadata is available when tagging is enabled.
 func validateTaggingInputs(cfg UploadConfig) error {
 	if !cfg.SkipTagging && cfg.GitHubRefName == "" {
-		return fmt.Errorf("GitHub reference name (GITHUB_REF_NAME) is required and cannot be empty")
+		return fmt.Errorf("GitHub reference name (GITHUB_HEAD_REF or GITHUB_REF_NAME) is required when tagging is enabled")
 	}
 	return nil
 }
@@ -49,13 +49,13 @@ func validateFile(filePath string) error {
 		return fmt.Errorf("file %q does not exist", filePath)
 	}
 	if err != nil {
-		return fmt.Errorf("cannot stat file %s: %w", filePath, err)
+		return fmt.Errorf("cannot stat file %q: %w", filePath, err)
 	}
 	if fi.IsDir() {
-		return fmt.Errorf("path %s is a directory, not a file", filePath)
+		return fmt.Errorf("path %q is a directory, not a file", filePath)
 	}
 	if !fi.Mode().IsRegular() {
-		return fmt.Errorf("path %s is not a regular file", filePath)
+		return fmt.Errorf("path %q is not a regular file", filePath)
 	}
 	return nil
 }
