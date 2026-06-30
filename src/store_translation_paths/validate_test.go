@@ -42,7 +42,7 @@ func TestValidateEnvironment(t *testing.T) {
 				"NAME_PATTERN":      "",
 				"FLAT_NAMING":       "false",
 			},
-			wantErr: "invalid TRANSLATIONS_PATH",
+			wantErr: "failed to process params: environment variable TRANSLATIONS_PATH is required",
 		},
 		{
 			name: "NAME_PATTERN trims and normalizes path-like pattern",
@@ -94,7 +94,7 @@ func TestValidateEnvironment(t *testing.T) {
 				"NAME_PATTERN":      "",
 				"FLAT_NAMING":       "false",
 			},
-			wantErr: "invalid TRANSLATIONS_PATH",
+			wantErr: "failed to process params: invalid path",
 		},
 		{
 			name: "TRANSLATIONS_PATH cleans to .. fails",
@@ -105,7 +105,7 @@ func TestValidateEnvironment(t *testing.T) {
 				"NAME_PATTERN":      "",
 				"FLAT_NAMING":       "false",
 			},
-			wantErr: "invalid TRANSLATIONS_PATH",
+			wantErr: "failed to process params: invalid path",
 		},
 		{
 			name: "TRANSLATIONS_PATH ./path is OK",
@@ -131,7 +131,7 @@ func TestValidateEnvironment(t *testing.T) {
 				"NAME_PATTERN":      "",
 				"FLAT_NAMING":       "true",
 			},
-			wantErr: "invalid TRANSLATIONS_PATH",
+			wantErr: "failed to process params: invalid path",
 		},
 		{
 			name: "NamePattern glob OK",
