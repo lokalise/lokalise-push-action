@@ -351,6 +351,10 @@ runs:
         POLL_MAX_WAIT: "${{ inputs.poll_max_wait }}"
         SKIP_DEFAULT_FLAGS: "${{ inputs.skip_default_flags }}"
         PLATFORM: "${{ steps.detect-platform.outputs.platform }}"
+        # File lists are attacker-influenceable (translation file names). Pass them
+        # through env so bash treats them as data, never as inline script. See YWH-41.
+        ALL_FILES: "${{ steps.find-files.outputs.ALL_FILES }}"
+        CHANGED_FILES: "${{ steps.changed-files.outputs.all_changed_files }}"
       run: |
         set -euo pipefail
 
@@ -358,9 +362,9 @@ runs:
 
         if [ "${{ inputs.rambo_mode }}" == "true" ] || \
           ( [ "${{ steps.changed-files.outputs.any_changed }}" != "true" ] && [ "${{ steps.check-first-run.outputs.first_run }}" == "true" ] ); then
-          FILES="${{ steps.find-files.outputs.ALL_FILES }}"
+          FILES="$ALL_FILES"
         else
-          FILES="${{ steps.changed-files.outputs.all_changed_files }}"
+          FILES="$CHANGED_FILES"
         fi
 
         if [ -z "$FILES" ]; then
