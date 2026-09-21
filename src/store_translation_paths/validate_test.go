@@ -9,14 +9,15 @@ import (
 
 func TestValidateEnvironment(t *testing.T) {
 	tests := []struct {
-		name            string
-		env             map[string]string
-		wantPaths       []string
-		wantBaseLang    string
-		wantFileExt     []string
-		wantNamePattern string
-		wantFlatNaming  bool
-		wantErr         string
+		name                string
+		env                 map[string]string
+		wantPaths           []string
+		wantBaseLang        string
+		wantFileExt         []string
+		wantNamePattern     string
+		wantExcludePatterns []string
+		wantFlatNaming      bool
+		wantErr             string
 	}{
 		{
 			name: "Valid environment variables",
@@ -25,13 +26,15 @@ func TestValidateEnvironment(t *testing.T) {
 				"BASE_LANG":         "en",
 				"FILE_EXT":          "json",
 				"NAME_PATTERN":      "custom_name.json",
+				"EXCLUDE_PATTERNS":  "*.de-DE.resx\n**/*.fr-FR.resx",
 				"FLAT_NAMING":       "true",
 			},
-			wantPaths:       []string{"path1", "path2"},
-			wantBaseLang:    "en",
-			wantFileExt:     []string{"json"},
-			wantNamePattern: "custom_name.json",
-			wantFlatNaming:  true,
+			wantPaths:           []string{"path1", "path2"},
+			wantBaseLang:        "en",
+			wantFileExt:         []string{"json"},
+			wantNamePattern:     "custom_name.json",
+			wantExcludePatterns: []string{"*.de-DE.resx", "**/*.fr-FR.resx"},
+			wantFlatNaming:      true,
 		},
 		{
 			name: "Missing environment variables",
@@ -40,9 +43,51 @@ func TestValidateEnvironment(t *testing.T) {
 				"BASE_LANG":         "",
 				"FILE_EXT":          "",
 				"NAME_PATTERN":      "",
+				"EXCLUDE_PATTERNS":  "",
 				"FLAT_NAMING":       "false",
 			},
 			wantErr: "failed to process params: environment variable TRANSLATIONS_PATH is required",
+		},
+		{
+			name: "Exclude patterns are normalized",
+			env: map[string]string{
+				"TRANSLATIONS_PATH": "translations",
+				"BASE_LANG":         "en",
+				"FILE_EXT":          "resx",
+				"NAME_PATTERN":      "*.resx",
+				"EXCLUDE_PATTERNS":  "  *.de-DE.resx  \n\n **/*.fr-FR.resx \n",
+				"FLAT_NAMING":       "false",
+			},
+			wantPaths:           []string{"translations"},
+			wantBaseLang:        "en",
+			wantFileExt:         []string{"resx"},
+			wantNamePattern:     "*.resx",
+			wantExcludePatterns: []string{"*.de-DE.resx", "**/*.fr-FR.resx"},
+			wantFlatNaming:      false,
+		},
+		{
+			name: "Invalid exclude pattern fails",
+			env: map[string]string{
+				"TRANSLATIONS_PATH": "translations",
+				"BASE_LANG":         "en",
+				"FILE_EXT":          "resx",
+				"NAME_PATTERN":      "*.resx",
+				"EXCLUDE_PATTERNS":  "[abc.resx",
+				"FLAT_NAMING":       "false",
+			},
+			wantErr: "invalid EXCLUDE_PATTERNS",
+		},
+		{
+			name: "Parent escape exclude pattern fails",
+			env: map[string]string{
+				"TRANSLATIONS_PATH": "translations",
+				"BASE_LANG":         "en",
+				"FILE_EXT":          "resx",
+				"NAME_PATTERN":      "*.resx",
+				"EXCLUDE_PATTERNS":  "../*.resx",
+				"FLAT_NAMING":       "false",
+			},
+			wantErr: "invalid EXCLUDE_PATTERNS",
 		},
 		{
 			name: "NAME_PATTERN trims and normalizes path-like pattern",
@@ -277,6 +322,7 @@ func TestValidateEnvironment(t *testing.T) {
 				"FILE_EXT",
 				"NAME_PATTERN",
 				"FLAT_NAMING",
+				"EXCLUDE_PATTERNS",
 			} {
 				t.Setenv(key, tt.env[key])
 			}
@@ -311,6 +357,13 @@ func TestValidateEnvironment(t *testing.T) {
 			}
 			if got.FlatNaming != tt.wantFlatNaming {
 				t.Fatalf("flatNaming mismatch. want=%v got=%v", tt.wantFlatNaming, got.FlatNaming)
+			}
+			if !slices.Equal(got.ExcludePatterns, tt.wantExcludePatterns) {
+				t.Fatalf(
+					"excludePatterns mismatch. want=%v got=%v",
+					tt.wantExcludePatterns,
+					got.ExcludePatterns,
+				)
 			}
 		})
 	}

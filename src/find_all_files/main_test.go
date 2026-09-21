@@ -107,11 +107,12 @@ func TestRunWith(t *testing.T) {
 		t.Parallel()
 
 		wantCfg := config{
-			Paths:       []string{"translations", "locales"},
-			BaseLang:    "en",
-			FileExts:    []string{"json", "yaml"},
-			NamePattern: "",
-			FlatNaming:  true,
+			Paths:           []string{"translations", "locales"},
+			BaseLang:        "en",
+			FileExts:        []string{"json", "yaml"},
+			NamePattern:     "",
+			FlatNaming:      true,
+			ExcludePatterns: nil,
 		}
 		wantFiles := []string{"translations/en.json", "locales/en.yaml"}
 
@@ -125,7 +126,7 @@ func TestRunWith(t *testing.T) {
 			return wantCfg, nil
 		}
 
-		find := func(paths []string, flatNaming bool, baseLang string, fileExts []string, namePattern string) ([]string, error) {
+		find := func(paths []string, flatNaming bool, baseLang string, fileExts []string, namePattern string, excludePatterns []string) ([]string, error) {
 			findCalled = true
 
 			if !slices.Equal(paths, wantCfg.Paths) {
@@ -195,7 +196,7 @@ func TestRunWith(t *testing.T) {
 			return config{}, errors.New("bad env")
 		}
 
-		find := func([]string, bool, string, []string, string) ([]string, error) {
+		find := func([]string, bool, string, []string, string, []string) ([]string, error) {
 			t.Fatal("find should not be called")
 			return nil, nil
 		}
@@ -227,15 +228,23 @@ func TestRunWith(t *testing.T) {
 
 		validate := func() (config, error) {
 			return config{
-				Paths:       []string{"translations"},
-				BaseLang:    "en",
-				FileExts:    []string{"json"},
-				NamePattern: "",
-				FlatNaming:  false,
+				Paths:           []string{"translations"},
+				BaseLang:        "en",
+				FileExts:        []string{"json"},
+				NamePattern:     "",
+				FlatNaming:      false,
+				ExcludePatterns: nil,
 			}, nil
 		}
 
-		find := func([]string, bool, string, []string, string) ([]string, error) {
+		find := func(
+			[]string,
+			bool,
+			string,
+			[]string,
+			string,
+			[]string,
+		) ([]string, error) {
 			return nil, errors.New("glob exploded")
 		}
 
@@ -279,7 +288,7 @@ func TestRunWith(t *testing.T) {
 			}, nil
 		}
 
-		find := func([]string, bool, string, []string, string) ([]string, error) {
+		find := func([]string, bool, string, []string, string, []string) ([]string, error) {
 			return wantFiles, nil
 		}
 

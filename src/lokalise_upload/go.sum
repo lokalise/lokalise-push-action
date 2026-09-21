@@ -1,5 +1,5 @@
-github.com/bodrovis/lokalise-actions-common/v2 v2.15.0 h1:OKjgnKhUBUDGmZRWfYWVPhUZDOO41WD8Ih4ce/YM648=
-github.com/bodrovis/lokalise-actions-common/v2 v2.15.0/go.mod h1:xWqh886dq9hAOJAdB8F2dkkibLHtXRYMvlyJSgaU8Kw=
+github.com/bodrovis/lokalise-actions-common/v2 v2.17.0 h1:r2CQOFgJDzrqZ4zDL4MmNCuKD5gdFP0uJn0OYkdLrZ4=
+github.com/bodrovis/lokalise-actions-common/v2 v2.17.0/go.mod h1:voLNlHgoOMXRJnSn1TXBSmohqZhbqLyc3ZEP80gT96w=
 github.com/bodrovis/lokex/v2 v2.4.0 h1:MbECSV4NDo922wSmtTWSr5B4II0FbCWSNz49fdGV1pY=
 github.com/bodrovis/lokex/v2 v2.4.0/go.mod h1:DJUSMMxdn3fTDCrBKcKSW885wSa+k3x4i8K6hKcNYG8=
 github.com/jarcoal/httpmock v1.4.2 h1:dKwiP/9zITCPfBLsDn3kchbSOu16JrnxtVEmL0fPRcI=
@@ -8,5 +8,5 @@ github.com/joho/godotenv v1.5.1 h1:7eLL/+HRGLY0ldzfGMeQkb7vMd0as4CfYvUVzLqw0N0=
 github.com/joho/godotenv v1.5.1/go.mod h1:f4LDr5Voq0i2e/R5DDNOoa2zzDfwtkZa6DnEwAbqwq4=
 go.yaml.in/yaml/v4 v4.0.0-rc.6 h1:1h7H1ohdUh93/FyE4YaDa1Zh64K6VVbjF4K6WUxMtH4=
 go.yaml.in/yaml/v4 v4.0.0-rc.6/go.mod h1:aZqd9kCMsGL7AuUv/m/PvWLdg5sjJsZ4oHDEnfPPfY0=
-golang.org/x/sync v0.22.0 h1:SZjpbeLmrCk4xhRSZFNZW5gFUeCeFgjekvI/+gfScek=
-golang.org/x/sync v0.22.0/go.mod h1:9xrNwdLfx4jkKbNva9FpL6vEN7evnE43NNNJQ2LF3+0=
+golang.org/x/sync v0.23.0 h1:KameEIfc1IkluZyXWLn39Wd4tURc6GbCiISGiZm2bQk=
+golang.org/x/sync v0.23.0/go.mod h1:sUUOizhqBxiL6pEWpqNLUiaJn1ShEbZ6BBqskPbjZm0=

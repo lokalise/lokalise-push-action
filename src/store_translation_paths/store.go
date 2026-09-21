@@ -9,8 +9,9 @@ import (
 
 type storePathsFunc func(cfg envConfig, writer io.Writer) error
 
-// storeTranslationPaths emits one pathspec per root and (if applicable) per extension.
-// Output is newline-separated, ready for consumption by changed-files (files_from_source_file).
+// storeTranslationPaths emits include pathspecs for translation files.
+// Output is newline-separated, ready for consumption by changed-files
+// (files_from_source_file).
 // Rules:
 //   - If namePattern is set, it fully overrides defaults and is written once per root.
 //     The pattern may include globs (e.g., "**/*.yaml") and/or a concrete filename.
@@ -43,6 +44,36 @@ func storeTranslationPaths(cfg envConfig, writer io.Writer) error {
 
 			pattern := buildTranslationPattern(root, cfg.FlatNaming, cfg.BaseLang, ext)
 			if err := writeUniqueLine(writer, seen, pattern); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// storeExcludedPaths emits exclude pathspecs relative to each configured root.
+//
+// EXCLUDE_PATTERNS are interpreted relative to every TRANSLATIONS_PATH entry.
+// Output is newline-separated, ready for consumption by changed-files
+// (files_ignore_from_source_file).
+func storeExcludedPaths(cfg envConfig, writer io.Writer) error {
+	seen := make(map[string]struct{})
+
+	patterns := slices.Clone(cfg.ExcludePatterns)
+	slices.Sort(patterns)
+
+	for _, root := range cfg.Paths {
+		for _, pattern := range patterns {
+			if pattern == "" {
+				continue
+			}
+
+			if err := writeUniqueLine(
+				writer,
+				seen,
+				filepath.Join(root, filepath.FromSlash(pattern)),
+			); err != nil {
 				return err
 			}
 		}

@@ -31,7 +31,7 @@ func run() error {
 
 type (
 	validateFunc func() (config, error)
-	findFunc     func([]string, bool, string, []string, string) ([]string, error)
+	findFunc     func([]string, bool, string, []string, string, []string) ([]string, error)
 	writeFunc    func(string, string) bool
 	processFunc  func([]string, writeFunc) error
 )
@@ -55,6 +55,7 @@ func runWith(
 		cfg.BaseLang,
 		cfg.FileExts,
 		cfg.NamePattern,
+		cfg.ExcludePatterns,
 	)
 	if err != nil {
 		return fmt.Errorf("unable to find translation files: %w", err)
