@@ -78,6 +78,21 @@ file_ext: |
     - `"en/**/custom_*.json"` will match nested files for the `en` locale
     - `"custom_*.json"` matches files directly under the given path
   This approach gives you fine-grained control similar to `flat_naming`, but with more flexibility.
+- `exclude_patterns` — Optional. One or more newline-separated glob patterns for translation files that should be excluded from uploads. Patterns are evaluated relative to each path specified in `translations_path`.
+
+  For example, with Java-style or .NET-style localized files stored next to the base-language files:
+
+  ```yaml
+  translations_path: |
+    src/AuditService/Resources
+    src/WebHost/Resources
+  name_pattern: "*.resx"
+  exclude_patterns: |
+    *.de-DE.resx
+    *.fr-FR.resx
+  ```
+
+  In this example, files such as `Account.resx` are uploaded, while `Account.de-DE.resx` and `Account.fr-FR.resx` are ignored.
 - `additional_params` (*default: empty*) — Extra parameters to pass to the [Upload file API endpoint](https://developers.lokalise.com/reference/upload-a-file). Must contain valid JSON or YAML. Defaults to an empty string. Be careful when setting the `include_path` additional parameter to `false`, as it will mean your keys won't be assigned with any filename upon upload: this might pose a problem if you're planning to utilize the pull action to download translation back. You can include multiple API parameters as needed:
 
 ```yaml
