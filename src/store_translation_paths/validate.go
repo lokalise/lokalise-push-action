@@ -9,11 +9,12 @@ import (
 )
 
 type envConfig struct {
-	Paths       []string
-	BaseLang    string
-	FileExts    []string
-	NamePattern string
-	FlatNaming  bool
+	Paths           []string
+	BaseLang        string
+	FileExts        []string
+	NamePattern     string
+	FlatNaming      bool
+	ExcludePatterns []string
 }
 
 // validateEnvironment reads and validates environment variables.
@@ -43,12 +44,18 @@ func validateEnvironment() (envConfig, error) {
 		return envConfig{}, err
 	}
 
+	excludePatterns, err := parseExcludePatterns()
+	if err != nil {
+		return envConfig{}, err
+	}
+
 	return envConfig{
-		Paths:       paths,
-		BaseLang:    baseLang,
-		FileExts:    fileExts,
-		NamePattern: namePattern,
-		FlatNaming:  flatNaming,
+		Paths:           paths,
+		BaseLang:        baseLang,
+		FileExts:        fileExts,
+		NamePattern:     namePattern,
+		FlatNaming:      flatNaming,
+		ExcludePatterns: excludePatterns,
 	}, nil
 }
 
@@ -82,4 +89,15 @@ func parseFlatNaming() (bool, error) {
 		return false, fmt.Errorf("invalid FLAT_NAMING: expected true or false: %w", err)
 	}
 	return flatNaming, nil
+}
+
+func parseExcludePatterns() ([]string, error) {
+	patterns := parsers.ParseStringArrayEnv("EXCLUDE_PATTERNS")
+
+	normalized, err := normalizers.NormalizeGlobPatterns(patterns)
+	if err != nil {
+		return nil, fmt.Errorf("invalid EXCLUDE_PATTERNS: %w", err)
+	}
+
+	return normalized, nil
 }

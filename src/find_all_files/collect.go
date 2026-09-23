@@ -34,9 +34,14 @@ func (c *fileCollector) sorted() []string {
 }
 
 // collectFilesByPattern applies NAME_PATTERN relative to the given root.
-// The pattern is evaluated against os.DirFS("."), so it must be repo-relative
-// and must not start with "./".
-func collectFilesByPattern(root, namePattern string, add func(string)) error {
+//
+// The pattern is evaluated against os.DirFS(root). Leading "./" and
+// platform-specific separators are normalized before matching.
+func collectFilesByPattern(
+	root string,
+	namePattern string,
+	add func(string),
+) error {
 	pattern := filepath.ToSlash(namePattern)
 	pattern = strings.TrimPrefix(pattern, "./")
 
@@ -51,7 +56,12 @@ func collectFilesByPattern(root, namePattern string, add func(string)) error {
 		doublestar.WithFailOnIOErrors(),
 	)
 	if err != nil {
-		return fmt.Errorf("apply name pattern %q in %q: %w", pattern, root, err)
+		return fmt.Errorf(
+			"apply name pattern %q in %q: %w",
+			pattern,
+			root,
+			err,
+		)
 	}
 
 	return nil

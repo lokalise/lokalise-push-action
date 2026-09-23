@@ -29,6 +29,10 @@ inputs:
     description: 'Use flat naming convention (true/false). If true, expects files like locales/en.json instead of locales/en/file.json'
     required: false
     default: 'false'
+  exclude_patterns:
+    description: 'Glob patterns for translation files to exclude. Patterns are relative to each translations_path entry. Accepts multiple newline-separated values.'
+    required: false
+    default: ''
   name_pattern:
     description: 'Custom pattern for naming translation files. Overrides default language-based naming. Must include both filename and extension if applicable (e.g., "custom_name.json" or "**/*.yaml"). Default behavior is used if not set.'
     required: false
@@ -165,6 +169,7 @@ runs:
         FILE_EXT: "${{ inputs.file_ext }}"
         NAME_PATTERN: "${{ inputs.name_pattern }}"
         PLATFORM: "${{ steps.detect-platform.outputs.platform }}"
+        EXCLUDE_PATTERNS: "${{ inputs.exclude_patterns }}"
       run: |
         set -euo pipefail
 
@@ -255,6 +260,7 @@ runs:
       uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96
       with:
         files_from_source_file: .git/lokalise-action/paths.txt
+        files_ignore_from_source_file: .git/lokalise-action/exclude_paths.txt
         separator: ','
         base_sha: ${{ inputs.use_tag_tracking == 'true' && steps.get-last-sync-sha.outputs.base_sha || '' }}
         sha: ${{ inputs.use_tag_tracking == 'true' && github.sha || '' }}
@@ -300,6 +306,7 @@ runs:
         FILE_EXT: "${{ inputs.file_ext }}"
         FLAT_NAMING: "${{ inputs.flat_naming }}"
         NAME_PATTERN: "${{ inputs.name_pattern }}"
+        EXCLUDE_PATTERNS: "${{ inputs.exclude_patterns }}"
         PLATFORM: "${{ steps.detect-platform.outputs.platform }}"
       run: |
         set -euo pipefail

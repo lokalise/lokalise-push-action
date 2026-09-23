@@ -311,6 +311,128 @@ func TestStoreTranslationPaths(t *testing.T) {
 	}
 }
 
+func TestStoreExcludedPaths(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  envConfig
+		want string
+	}{
+		{
+			name: "Stores exclude patterns for every root",
+			cfg: envConfig{
+				Paths: []string{
+					"src/AuditService/Resources",
+					"src/WebHost/Resources",
+				},
+				ExcludePatterns: []string{
+					"*.fr-FR.resx",
+					"*.de-DE.resx",
+				},
+			},
+			want: "" +
+				"src/AuditService/Resources/*.de-DE.resx\n" +
+				"src/AuditService/Resources/*.fr-FR.resx\n" +
+				"src/WebHost/Resources/*.de-DE.resx\n" +
+				"src/WebHost/Resources/*.fr-FR.resx\n",
+		},
+		{
+			name: "Empty exclude patterns produce no output",
+			cfg: envConfig{
+				Paths:           []string{"translations"},
+				ExcludePatterns: nil,
+			},
+			want: "",
+		},
+		{
+			name: "Empty patterns are skipped",
+			cfg: envConfig{
+				Paths: []string{"translations"},
+				ExcludePatterns: []string{
+					"",
+					"*.de-DE.resx",
+				},
+			},
+			want: "translations/*.de-DE.resx\n",
+		},
+		{
+			name: "Nested glob is preserved",
+			cfg: envConfig{
+				Paths: []string{"translations"},
+				ExcludePatterns: []string{
+					"generated/**/*.json",
+				},
+			},
+			want: "translations/generated/**/*.json\n",
+		},
+		{
+			name: "Duplicate pathspecs are written once",
+			cfg: envConfig{
+				Paths: []string{
+					"translations",
+					"translations",
+				},
+				ExcludePatterns: []string{
+					"*.de-DE.resx",
+					"*.de-DE.resx",
+				},
+			},
+			want: "translations/*.de-DE.resx\n",
+		},
+		{
+			name: "Pattern output is sorted within each root",
+			cfg: envConfig{
+				Paths: []string{"translations"},
+				ExcludePatterns: []string{
+					"*.sv-SE.resx",
+					"*.de-DE.resx",
+					"*.fr-FR.resx",
+				},
+			},
+			want: "" +
+				"translations/*.de-DE.resx\n" +
+				"translations/*.fr-FR.resx\n" +
+				"translations/*.sv-SE.resx\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf strings.Builder
+
+			err := storeExcludedPaths(tt.cfg, &buf)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if got := buf.String(); got != tt.want {
+				t.Fatalf("output mismatch.\nwant:\n%q\ngot:\n%q", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestStoreExcludedPathsReturnsWriteError(t *testing.T) {
+	cfg := envConfig{
+		Paths: []string{"translations"},
+		ExcludePatterns: []string{
+			"*.de-DE.resx",
+		},
+	}
+
+	err := storeExcludedPaths(cfg, failingWriter{})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "write failed") {
+		t.Fatalf(
+			"expected error containing %q, got %q",
+			"write failed",
+			err.Error(),
+		)
+	}
+}
+
 func normalizeLines(lines []string) []string {
 	var normalized []string
 	for _, line := range lines {

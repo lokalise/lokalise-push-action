@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"slices"
@@ -15,72 +14,102 @@ func TestRunWith(t *testing.T) {
 		t.Parallel()
 
 		wantCfg := envConfig{
-			Paths:       []string{"translations"},
-			BaseLang:    "en",
-			FileExts:    []string{"json"},
-			NamePattern: "",
-			FlatNaming:  true,
+			Paths:           []string{"translations"},
+			BaseLang:        "en",
+			FileExts:        []string{"json"},
+			NamePattern:     "",
+			ExcludePatterns: []string{"*.de-DE.json"},
+			FlatNaming:      true,
 		}
 
 		validateCalled := false
-		createCalled := false
-		storeCalled := false
-		closeCalled := false
+		storePathsCalled := false
+		storeExcludedCalled := false
 
-		var createdFile *os.File
+		createdFiles := make(map[string]*os.File)
+		closedFiles := make(map[*os.File]bool)
 
 		validate := func() (envConfig, error) {
 			validateCalled = true
 			return wantCfg, nil
 		}
 
-		createFile := func() (*os.File, error) {
-			createCalled = true
-
-			f, err := os.CreateTemp(t.TempDir(), "pathspecs-*.txt")
+		createFile := func(name string) (*os.File, error) {
+			f, err := os.CreateTemp(t.TempDir(), name+"-*")
 			if err != nil {
 				t.Fatalf("failed to create temp file: %v", err)
 			}
-			createdFile = f
+
+			createdFiles[name] = f
 			return f, nil
 		}
 
-		store := func(cfg envConfig, writer io.Writer) error {
-			storeCalled = true
-
+		storePaths := func(cfg envConfig, writer io.Writer) error {
+			storePathsCalled = true
 			assertConfigEqual(t, cfg, wantCfg)
 
-			if writer != createdFile {
-				t.Fatalf("writer mismatch. want=%v got=%v", createdFile, writer)
+			if writer != createdFiles[pathsFileName] {
+				t.Fatalf(
+					"paths writer mismatch. want=%v got=%v",
+					createdFiles[pathsFileName],
+					writer,
+				)
+			}
+
+			return nil
+		}
+
+		storeExcluded := func(cfg envConfig, writer io.Writer) error {
+			storeExcludedCalled = true
+			assertConfigEqual(t, cfg, wantCfg)
+
+			if writer != createdFiles[excludePathsFileName] {
+				t.Fatalf(
+					"excluded paths writer mismatch. want=%v got=%v",
+					createdFiles[excludePathsFileName],
+					writer,
+				)
 			}
 
 			return nil
 		}
 
 		closeFile := func(file *os.File) error {
-			closeCalled = true
-			if file != createdFile {
-				return fmt.Errorf("closeFile got unexpected file. want=%v got=%v", createdFile, file)
-			}
-
+			closedFiles[file] = true
 			return file.Close()
 		}
 
-		err := runWith(validate, createFile, store, closeFile)
+		err := runWith(
+			validate,
+			createFile,
+			storePaths,
+			storeExcluded,
+			closeFile,
+		)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
+
 		if !validateCalled {
 			t.Fatal("validate was not called")
 		}
-		if !createCalled {
-			t.Fatal("createFile was not called")
+
+		if !storePathsCalled {
+			t.Fatal("storePaths was not called")
 		}
-		if !storeCalled {
-			t.Fatal("store was not called")
+
+		if !storeExcludedCalled {
+			t.Fatal("storeExcluded was not called")
 		}
-		if !closeCalled {
-			t.Fatal("closeFile was not called")
+
+		if len(createdFiles) != 2 {
+			t.Fatalf("expected 2 files to be created, got %d", len(createdFiles))
+		}
+
+		for name, file := range createdFiles {
+			if !closedFiles[file] {
+				t.Fatalf("file %q was not closed", name)
+			}
 		}
 	})
 
@@ -91,7 +120,7 @@ func TestRunWith(t *testing.T) {
 			return envConfig{}, errors.New("bad env")
 		}
 
-		createFile := func() (*os.File, error) {
+		createFile := func(string) (*os.File, error) {
 			t.Fatal("createFile should not be called")
 			return nil, nil
 		}
@@ -102,22 +131,32 @@ func TestRunWith(t *testing.T) {
 		}
 
 		closeFile := func(*os.File) error {
-			t.Helper()
 			t.Fatal("closeFile should not be called")
 			return nil
 		}
 
-		err := runWith(validate, createFile, store, closeFile)
+		err := runWith(
+			validate,
+			createFile,
+			store,
+			store,
+			closeFile,
+		)
+
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
 
 		if !strings.Contains(err.Error(), "bad env") {
-			t.Fatalf("expected error containing %q, got %q", "bad env", err.Error())
+			t.Fatalf(
+				"expected error containing %q, got %q",
+				"bad env",
+				err.Error(),
+			)
 		}
 	})
 
-	t.Run("wraps create output file error and stops", func(t *testing.T) {
+	t.Run("wraps translation paths file creation error and stops", func(t *testing.T) {
 		t.Parallel()
 
 		validate := func() (envConfig, error) {
@@ -129,7 +168,11 @@ func TestRunWith(t *testing.T) {
 			}, nil
 		}
 
-		createFile := func() (*os.File, error) {
+		createFile := func(name string) (*os.File, error) {
+			if name != pathsFileName {
+				t.Fatalf("unexpected file requested: %q", name)
+			}
+
 			return nil, errors.New("permission denied")
 		}
 
@@ -139,24 +182,112 @@ func TestRunWith(t *testing.T) {
 		}
 
 		closeFile := func(*os.File) error {
-			t.Helper()
 			t.Fatal("closeFile should not be called")
 			return nil
 		}
 
-		err := runWith(validate, createFile, store, closeFile)
+		err := runWith(
+			validate,
+			createFile,
+			store,
+			store,
+			closeFile,
+		)
+
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !strings.Contains(err.Error(), "cannot create output file") {
-			t.Fatalf("expected wrapped error containing %q, got %q", "cannot create output file", err.Error())
+
+		if !strings.Contains(err.Error(), "cannot create translation paths output file") {
+			t.Fatalf(
+				"expected translation paths creation error, got %q",
+				err.Error(),
+			)
 		}
+
 		if !strings.Contains(err.Error(), "permission denied") {
-			t.Fatalf("expected wrapped error containing %q, got %q", "permission denied", err.Error())
+			t.Fatalf(
+				"expected error containing %q, got %q",
+				"permission denied",
+				err.Error(),
+			)
 		}
 	})
 
-	t.Run("wraps store error and still closes file", func(t *testing.T) {
+	t.Run("wraps excluded paths file creation error and closes translation paths file", func(t *testing.T) {
+		t.Parallel()
+
+		validate := func() (envConfig, error) {
+			return envConfig{
+				Paths:      []string{"translations"},
+				BaseLang:   "en",
+				FileExts:   []string{"json"},
+				FlatNaming: true,
+			}, nil
+		}
+
+		var pathsFile *os.File
+		closeCalled := false
+
+		createFile := func(name string) (*os.File, error) {
+			switch name {
+			case pathsFileName:
+				f, err := os.CreateTemp(t.TempDir(), "paths-*")
+				if err != nil {
+					t.Fatalf("failed to create temp file: %v", err)
+				}
+
+				pathsFile = f
+				return f, nil
+
+			case excludePathsFileName:
+				return nil, errors.New("permission denied")
+
+			default:
+				t.Fatalf("unexpected file requested: %q", name)
+				return nil, nil
+			}
+		}
+
+		store := func(envConfig, io.Writer) error {
+			t.Fatal("store should not be called")
+			return nil
+		}
+
+		closeFile := func(file *os.File) error {
+			if file != pathsFile {
+				t.Fatalf("unexpected file passed to closeFile")
+			}
+
+			closeCalled = true
+			return file.Close()
+		}
+
+		err := runWith(
+			validate,
+			createFile,
+			store,
+			store,
+			closeFile,
+		)
+
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		if !strings.Contains(err.Error(), "cannot create excluded paths output file") {
+			t.Fatalf(
+				"expected excluded paths creation error, got %q",
+				err.Error(),
+			)
+		}
+
+		if !closeCalled {
+			t.Fatal("translation paths file was not closed")
+		}
+	})
+
+	t.Run("wraps translation paths store error and closes both files", func(t *testing.T) {
 		t.Parallel()
 
 		wantCfg := envConfig{
@@ -168,48 +299,51 @@ func TestRunWith(t *testing.T) {
 
 		storeErr := errors.New("disk full")
 
-		var createdFile *os.File
-		closeCalled := false
+		createdFiles := make(map[string]*os.File)
+		closedFiles := make(map[*os.File]bool)
 
 		validate := func() (envConfig, error) {
 			return wantCfg, nil
 		}
 
-		createFile := func() (*os.File, error) {
-			f, err := os.CreateTemp(t.TempDir(), "pathspecs-*.txt")
+		createFile := func(name string) (*os.File, error) {
+			f, err := os.CreateTemp(t.TempDir(), name+"-*")
 			if err != nil {
 				t.Fatalf("failed to create temp file: %v", err)
 			}
 
-			createdFile = f
+			createdFiles[name] = f
 			return f, nil
 		}
 
-		store := func(cfg envConfig, writer io.Writer) error {
+		storePaths := func(cfg envConfig, writer io.Writer) error {
 			assertConfigEqual(t, cfg, wantCfg)
 
-			if writer != createdFile {
-				t.Fatalf("writer mismatch. want=%v got=%v", createdFile, writer)
+			if writer != createdFiles[pathsFileName] {
+				t.Fatalf("unexpected writer")
 			}
 
 			return storeErr
 		}
 
+		storeExcluded := func(envConfig, io.Writer) error {
+			t.Fatal("storeExcluded should not be called")
+			return nil
+		}
+
 		closeFile := func(file *os.File) error {
-			closeCalled = true
-
-			if file != createdFile {
-				return fmt.Errorf(
-					"closeFile got unexpected file. want=%v got=%v",
-					createdFile,
-					file,
-				)
-			}
-
+			closedFiles[file] = true
 			return file.Close()
 		}
 
-		err := runWith(validate, createFile, store, closeFile)
+		err := runWith(
+			validate,
+			createFile,
+			storePaths,
+			storeExcluded,
+			closeFile,
+		)
+
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -226,8 +360,90 @@ func TestRunWith(t *testing.T) {
 			)
 		}
 
-		if !closeCalled {
-			t.Fatal("closeFile was not called")
+		for name, file := range createdFiles {
+			if !closedFiles[file] {
+				t.Fatalf("file %q was not closed", name)
+			}
+		}
+	})
+
+	t.Run("wraps excluded paths store error and closes both files", func(t *testing.T) {
+		t.Parallel()
+
+		wantCfg := envConfig{
+			Paths:           []string{"translations"},
+			BaseLang:        "en",
+			FileExts:        []string{"json"},
+			ExcludePatterns: []string{"*.de-DE.json"},
+			FlatNaming:      true,
+		}
+
+		storeErr := errors.New("disk full")
+
+		createdFiles := make(map[string]*os.File)
+		closedFiles := make(map[*os.File]bool)
+
+		validate := func() (envConfig, error) {
+			return wantCfg, nil
+		}
+
+		createFile := func(name string) (*os.File, error) {
+			f, err := os.CreateTemp(t.TempDir(), name+"-*")
+			if err != nil {
+				t.Fatalf("failed to create temp file: %v", err)
+			}
+
+			createdFiles[name] = f
+			return f, nil
+		}
+
+		storePaths := func(envConfig, io.Writer) error {
+			return nil
+		}
+
+		storeExcluded := func(cfg envConfig, writer io.Writer) error {
+			assertConfigEqual(t, cfg, wantCfg)
+
+			if writer != createdFiles[excludePathsFileName] {
+				t.Fatalf("unexpected writer")
+			}
+
+			return storeErr
+		}
+
+		closeFile := func(file *os.File) error {
+			closedFiles[file] = true
+			return file.Close()
+		}
+
+		err := runWith(
+			validate,
+			createFile,
+			storePaths,
+			storeExcluded,
+			closeFile,
+		)
+
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		if !errors.Is(err, storeErr) {
+			t.Fatalf("expected error wrapping %v, got %v", storeErr, err)
+		}
+
+		if !strings.Contains(err.Error(), "cannot store excluded paths") {
+			t.Fatalf(
+				"expected error containing %q, got %q",
+				"cannot store excluded paths",
+				err.Error(),
+			)
+		}
+
+		for name, file := range createdFiles {
+			if !closedFiles[file] {
+				t.Fatalf("file %q was not closed", name)
+			}
 		}
 	})
 }
@@ -252,6 +468,14 @@ func assertConfigEqual(t *testing.T, got, want envConfig) {
 			"namePattern mismatch. want=%q got=%q",
 			want.NamePattern,
 			got.NamePattern,
+		)
+	}
+
+	if !slices.Equal(got.ExcludePatterns, want.ExcludePatterns) {
+		t.Fatalf(
+			"excludePatterns mismatch. want=%v got=%v",
+			want.ExcludePatterns,
+			got.ExcludePatterns,
 		)
 	}
 

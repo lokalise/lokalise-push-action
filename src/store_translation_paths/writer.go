@@ -8,9 +8,15 @@ import (
 	"path/filepath"
 )
 
+const (
+	pathsFileName        = "paths.txt"
+	excludePathsFileName = "exclude_paths.txt"
+)
+
 // writeUniqueLine writes a normalized newline-terminated pathspec once.
 func writeUniqueLine(writer io.Writer, seen map[string]struct{}, pathspec string) error {
 	line := filepath.ToSlash(filepath.Clean(pathspec))
+
 	if line == "." {
 		return errors.New("empty pathspec")
 	}
@@ -24,17 +30,19 @@ func writeUniqueLine(writer io.Writer, seen map[string]struct{}, pathspec string
 	}
 
 	seen[line] = struct{}{}
+
 	return nil
 }
 
-// createOutputFile creates the temp file consumed later by changed-files.
-func createOutputFile() (*os.File, error) {
+// createOutputFile creates a temp file consumed later by changed-files.
+func createOutputFile(name string) (*os.File, error) {
 	dir := filepath.Join(".git", "lokalise-action")
+
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("cannot create output directory: %w", err)
 	}
 
-	path := filepath.Join(dir, "paths.txt")
+	path := filepath.Join(dir, name)
 
 	file, err := os.Create(path)
 	if err != nil {
