@@ -20,10 +20,10 @@ func TestHasMatchingExtension(t *testing.T) {
 			want:     true,
 		},
 		{
-			name:     "matches uppercase extension case-insensitively",
+			name:     "does not match uppercase extension case-insensitively",
 			filename: "file.JSON",
 			fileExts: []string{"json"},
-			want:     true,
+			want:     false,
 		},
 		{
 			name:     "matches one of multiple extensions",
@@ -48,6 +48,18 @@ func TestHasMatchingExtension(t *testing.T) {
 			filename: "archive.tar.gz",
 			fileExts: []string{"gz"},
 			want:     true,
+		},
+		{
+			name:     "matches compound extension",
+			filename: "archive.tar.gz",
+			fileExts: []string{"tar.gz"},
+			want:     true,
+		},
+		{
+			name:     "does not match different compound extension",
+			filename: "archive.tar.gz",
+			fileExts: []string{"zip.gz"},
+			want:     false,
 		},
 		{
 			name:     "does not match non-last extension in multi-dot filename",
@@ -271,7 +283,6 @@ func TestCollectNestedFiles(t *testing.T) {
 			want: []string{
 				filepath.Join(baseTestDir, "nested", "en", "file1.json"),
 				filepath.Join(baseTestDir, "nested", "en", "file2.json"),
-				filepath.Join(baseTestDir, "nested", "en", "file3.YAML"),
 				filepath.Join(baseTestDir, "nested", "en", "deeper", "file4.json"),
 			},
 		},
@@ -289,6 +300,13 @@ func TestCollectNestedFiles(t *testing.T) {
 			root:     filepath.Join(baseTestDir, "nested"),
 			baseLang: "en",
 			fileExts: []string{"yaml"},
+			want:     nil,
+		},
+		{
+			name:     "matches uppercase extension",
+			root:     filepath.Join(baseTestDir, "nested"),
+			baseLang: "en",
+			fileExts: []string{"YAML"},
 			want: []string{
 				filepath.Join(baseTestDir, "nested", "en", "file3.YAML"),
 			},

@@ -12,7 +12,7 @@ func TestRunWith(t *testing.T) {
 	t.Run("happy path", func(t *testing.T) {
 		t.Parallel()
 
-		args := []string{"lokalise_upload", "  file.json  "}
+		args := []string{"lokalise_upload", "file.json"}
 
 		wantCfg := UploadConfig{
 			FilePath:      "file.json",
@@ -261,9 +261,14 @@ func TestParseCLIArgs(t *testing.T) {
 			wantErr: "file path is empty",
 		},
 		{
-			name: "valid CLI arg is trimmed",
+			name: "valid CLI arg preserves surrounding whitespace",
 			args: []string{"lokalise_upload", "  file.json  "},
-			want: "file.json",
+			want: "  file.json  ",
+		},
+		{
+			name: "valid CLI arg preserves internal whitespace",
+			args: []string{"lokalise_upload", "my translations.json"},
+			want: "my translations.json",
 		},
 		{
 			name:    "too many CLI args returns error",

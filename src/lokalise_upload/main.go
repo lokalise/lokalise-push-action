@@ -70,8 +70,8 @@ func parseCLIArgs(args []string) (string, error) {
 		return "", errors.New("usage: lokalise_upload <file>")
 	}
 
-	filePath := strings.TrimSpace(args[1])
-	if filePath == "" {
+	filePath := args[1]
+	if strings.TrimSpace(filePath) == "" {
 		return "", errors.New("file path is empty")
 	}
 

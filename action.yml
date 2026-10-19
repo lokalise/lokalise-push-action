@@ -205,7 +205,7 @@ runs:
         TAG_NAME="lokalise-sync-${BRANCH_NAME}"
         echo "Looking for tag: $TAG_NAME"
 
-        if git ls-remote --exit-code --refs --tags origin "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
+        if git ls-remote --exit-code --refs --tags origin "refs/tags/$TAG_NAME" >/dev/null; then
           echo "Tag '$TAG_NAME' found on remote."
           
           git fetch --force --quiet origin "+refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
@@ -217,7 +217,14 @@ runs:
           fi
           echo "Warning: tag exists on remote but could not resolve SHA locally."
         else
-          echo "Tag '$TAG_NAME' not found on remote."
+          status=$?
+
+          if [ "$status" -eq 2 ]; then
+            echo "Tag '$TAG_NAME' not found on remote."
+          else
+            echo "::error::Failed to check remote tag '$TAG_NAME' (exit code: $status)"
+            exit "$status"
+          fi
         fi
 
         echo "Falling back to HEAD~1..."
@@ -274,12 +281,19 @@ runs:
         TAG_NAME="lokalise-upload-complete"
         echo "Checking if this is the first action run... (tag: $TAG_NAME)"
 
-        if git ls-remote --exit-code --refs --tags origin "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
+        if git ls-remote --exit-code --refs --tags origin "refs/tags/$TAG_NAME" >/dev/null; then
           echo "This is not the first action run."
           echo "first_run=false" >> "$GITHUB_OUTPUT"
         else
-          echo "This is the first action run."
-          echo "first_run=true" >> "$GITHUB_OUTPUT"
+          status=$?
+
+          if [ "$status" -eq 2 ]; then
+            echo "This is the first action run."
+            echo "first_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Failed to check remote tag '$TAG_NAME' (exit code: $status)"
+            exit "$status"
+          fi
         fi
 
     - name: Find all translation files
@@ -443,11 +457,19 @@ runs:
             echo "Created global tag '$GLOBAL_TAG'."
           else
             echo "Push of '$GLOBAL_TAG' failed. Checking remote (race?)"
-            if git ls-remote --exit-code --refs --tags origin "refs/tags/$GLOBAL_TAG" >/dev/null 2>&1; then
+
+            if git ls-remote --exit-code --refs --tags origin "refs/tags/$GLOBAL_TAG" >/dev/null; then
               echo "Global tag already exists; proceeding."
             else
-              echo "Failed to create global tag '$GLOBAL_TAG' and it doesn't exist remotely."
-              exit 1
+              status=$?
+
+              if [ "$status" -eq 2 ]; then
+                echo "::error::Failed to push global tag '$GLOBAL_TAG': tag not found on remote."
+                exit 1
+              else
+                echo "::error::Failed to check remote tag '$GLOBAL_TAG' (exit code: $status)"
+                exit "$status"
+              fi
             fi
           fi
         fi

@@ -34,7 +34,7 @@ func writeUniqueLine(writer io.Writer, seen map[string]struct{}, pathspec string
 	return nil
 }
 
-// createOutputFile creates a temp file consumed later by changed-files.
+// createOutputFile creates or truncates a file consumed by changed-files.
 func createOutputFile(name string) (*os.File, error) {
 	dir := filepath.Join(".git", "lokalise-action")
 

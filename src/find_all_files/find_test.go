@@ -77,9 +77,7 @@ func TestFindAllTranslationFiles(t *testing.T) {
 			flatNaming: false,
 			baseLang:   "en",
 			fileExt:    []string{"yaml"},
-			expected: []string{
-				filepath.Join(baseTestDir, "nested/en/file3.YAML"),
-			},
+			expected:   []string{},
 		},
 		{
 			name:       "Nested naming missing language directory is not an error",

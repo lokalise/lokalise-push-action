@@ -173,13 +173,13 @@ func TestValidateEnvironment(t *testing.T) {
 			env: map[string]string{
 				"TRANSLATIONS_PATH": "translations",
 				"BASE_LANG":         "en",
-				"FILE_EXT":          " JSON \n.yaml\njson\n YML \n .xml ",
+				"FILE_EXT":          " JSON \n.yaml\njson\n.JSON\n YML \n .xml ",
 				"NAME_PATTERN":      "",
 				"FLAT_NAMING":       "true",
 			},
 			wantPaths:       []string{"translations"},
 			wantBaseLang:    "en",
-			wantFileExt:     []string{"json", "yaml", "yml", "xml"},
+			wantFileExt:     []string{"JSON", "yaml", "json", "YML", "xml"},
 			wantNamePattern: "",
 			wantFlatNaming:  true,
 		},
@@ -195,7 +195,7 @@ func TestValidateEnvironment(t *testing.T) {
 			wantErr: "invalid FILE_EXT",
 		},
 		{
-			name: "Leading dots and casing in file extensions normalize correctly",
+			name: "Leading dots are removed and extension case is preserved",
 			env: map[string]string{
 				"TRANSLATIONS_PATH": "translations",
 				"BASE_LANG":         "en",
@@ -205,7 +205,7 @@ func TestValidateEnvironment(t *testing.T) {
 			},
 			wantPaths:       []string{"translations"},
 			wantBaseLang:    "en",
-			wantFileExt:     []string{"json"},
+			wantFileExt:     []string{"json", "JSON"},
 			wantNamePattern: "",
 			wantFlatNaming:  true,
 		},
